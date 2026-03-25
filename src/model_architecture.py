@@ -7,13 +7,12 @@ requirements.
 """
 
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 
-# Set random seeds for reproducibility
+# TensorFlow is imported lazily inside each function to avoid macOS bus error
+# on Python 3.12 when importing at module level.
+
+# Set random seed for reproducibility
 np.random.seed(42)
-tf.random.set_seed(42)
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
@@ -30,6 +29,15 @@ CINIC_CLASSES = [
 ]
 
 
+def _keras():
+    """Lazy import helper — returns (keras, layers) to avoid module-level TF crash."""
+    from tensorflow import keras as _k
+    from tensorflow.keras import layers as _l
+    import tensorflow as tf
+    tf.random.set_seed(42)
+    return _k, _l
+
+
 def create_baseline_cnn(input_shape=(32, 32, 3), num_classes=10):
     """
     Create a baseline CNN architecture for CINIC-10 classification.
@@ -41,6 +49,7 @@ def create_baseline_cnn(input_shape=(32, 32, 3), num_classes=10):
     Returns:
         keras.Model: Compiled CNN model
     """
+    keras, layers = _keras()
     model = keras.Sequential(
         [
             # First convolutional block
@@ -89,6 +98,7 @@ def create_deep_cnn(input_shape=(32, 32, 3), num_classes=10):
     Returns:
         keras.Model: Compiled CNN model
     """
+    keras, layers = _keras()
     model = keras.Sequential(
         [
             # First convolutional block
@@ -146,6 +156,7 @@ def create_efficient_cnn(input_shape=(32, 32, 3), num_classes=10):
     Returns:
         keras.Model: Compiled CNN model
     """
+    keras, layers = _keras()
     model = keras.Sequential(
         [
             # First convolutional block
@@ -200,6 +211,7 @@ def create_cnn_with_regularization(
     Returns:
         keras.Model: Compiled CNN model with regularization
     """
+    keras, layers = _keras()
     # Using Keras functional API for more complex architectures
     inputs = keras.Input(shape=input_shape)
 
@@ -292,6 +304,7 @@ def create_few_shot_cnn(input_shape=(32, 32, 3), num_classes=10):
     Returns:
         keras.Model: Compiled CNN model optimized for few-shot learning
     """
+    keras, layers = _keras()
     # This architecture emphasizes feature extraction capabilities for few-shot scenarios
     model = keras.Sequential(
         [
