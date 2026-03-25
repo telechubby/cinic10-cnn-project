@@ -1,6 +1,9 @@
 """Hyperparameter Analysis Module -- PyTorch implementation."""
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from datetime import datetime
 
 import matplotlib.pyplot as plt
@@ -8,7 +11,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from utils import get_device, train_model as _train_model_fn
 
 CINIC_CLASSES = [
     "airplane", "automobile", "bird", "cat", "deer",
@@ -28,16 +31,12 @@ def _make_loaders(train_dir, val_dir, batch_size):
     )
 
 
-def _get_utils():
-    from utils import get_device, train_model
-    return get_device(), train_model
-
-
 def analyze_learning_rates(model_func, train_dir, val_dir,
                             learning_rates=None, epochs=10, batch_size=32):
     if learning_rates is None:
         learning_rates = [0.0001, 0.001, 0.01, 0.1]
-    device, train_model = _get_utils()
+    device = get_device()
+    train_model = _train_model_fn
     train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
     results = []
     for lr in learning_rates:
@@ -46,6 +45,9 @@ def analyze_learning_rates(model_func, train_dir, val_dir,
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         history = train_model(model, train_loader, val_loader, optimizer,
                               epochs=epochs, device=device)
+        if not history.get("accuracy"):
+            print(f"Warning: no epochs completed, skipping this config.")
+            continue
         results.append({
             "learning_rate": lr,
             "train_accuracy": history["accuracy"][-1],
@@ -61,7 +63,8 @@ def analyze_batch_sizes(model_func, train_dir, val_dir,
                          batch_sizes=None, epochs=10):
     if batch_sizes is None:
         batch_sizes = [32, 64, 128]
-    device, train_model = _get_utils()
+    device = get_device()
+    train_model = _train_model_fn
     results = []
     for bs in batch_sizes:
         print(f"Testing batch size: {bs}")
@@ -70,6 +73,9 @@ def analyze_batch_sizes(model_func, train_dir, val_dir,
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         history = train_model(model, train_loader, val_loader, optimizer,
                               epochs=epochs, device=device)
+        if not history.get("accuracy"):
+            print(f"Warning: no epochs completed, skipping this config.")
+            continue
         results.append({
             "batch_size": bs,
             "train_accuracy": history["accuracy"][-1],
@@ -88,7 +94,8 @@ def analyze_regularization_strengths(model_func, train_dir, val_dir,
         dropout_rates = [0.2, 0.3, 0.5]
     if weight_decays is None:
         weight_decays = [1e-4, 1e-3, 1e-2]
-    device, train_model = _get_utils()
+    device = get_device()
+    train_model = _train_model_fn
     train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
     results = []
     for dr in dropout_rates:
@@ -102,6 +109,9 @@ def analyze_regularization_strengths(model_func, train_dir, val_dir,
                                              lr=0.001, weight_decay=wd)
                 history = train_model(model, train_loader, val_loader, optimizer,
                                       epochs=epochs, device=device)
+                if not history.get("accuracy"):
+                    print(f"Warning: no epochs completed, skipping this config.")
+                    continue
                 results.append({
                     "dropout_rate": dr, "weight_decay": wd,
                     "train_accuracy": history["accuracy"][-1],
@@ -122,7 +132,8 @@ def analyze_optimizers(model_func, train_dir, val_dir,
                         optimizers=None, epochs=10, batch_size=32):
     if optimizers is None:
         optimizers = ["adam", "sgd", "rmsprop"]
-    device, train_model = _get_utils()
+    device = get_device()
+    train_model = _train_model_fn
     train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
     results = []
     for opt_name in optimizers:
@@ -139,6 +150,9 @@ def analyze_optimizers(model_func, train_dir, val_dir,
         try:
             history = train_model(model, train_loader, val_loader, opt,
                                   epochs=epochs, device=device)
+            if not history.get("accuracy"):
+                print(f"Warning: no epochs completed, skipping this config.")
+                continue
             results.append({
                 "optimizer": opt_name,
                 "train_accuracy": history["accuracy"][-1],
