@@ -61,3 +61,23 @@ def test_no_validation_split_in_generators():
     from augmentation_studies import create_standard_augmentation_generators
     source = inspect.getsource(create_standard_augmentation_generators)
     assert "validation_split" not in source
+
+
+def test_create_cutout_dataloader_returns_dataloader():
+    import os, tempfile
+    import numpy as np
+    from PIL import Image
+    from torch.utils.data import DataLoader
+    from augmentation_studies import create_cutout_dataloader
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for cls in ["cat", "dog"]:
+            cls_dir = os.path.join(tmpdir, cls)
+            os.makedirs(cls_dir)
+            for i in range(3):
+                img = Image.fromarray(np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8))
+                img.save(os.path.join(cls_dir, f"img_{i}.png"))
+        loader = create_cutout_dataloader(tmpdir, batch_size=4, mask_size=8)
+        assert isinstance(loader, DataLoader)
+        images, labels = next(iter(loader))
+        assert images.shape[1] == 3  # CHW channels-first
