@@ -76,3 +76,61 @@ def test_subsample_dataset_requires_fraction_or_n():
     with tempfile.TemporaryDirectory() as tmpdir:
         with pytest.raises(ValueError):
             subsample_dataset(tmpdir, tmpdir)
+
+
+def test_create_data_generators_returns_dataloaders():
+    import os, tempfile
+    import numpy as np
+    from PIL import Image
+    import torch
+    from torch.utils.data import DataLoader
+    from data_preprocessing import create_data_generators
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for split in ["train", "val"]:
+            for cls in ["cat", "dog"]:
+                cls_dir = os.path.join(tmpdir, split, cls)
+                os.makedirs(cls_dir)
+                for i in range(5):
+                    img = Image.fromarray(
+                        np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8))
+                    img.save(os.path.join(cls_dir, f"img_{i}.png"))
+
+        train_loader, val_loader = create_data_generators(
+            os.path.join(tmpdir, "train"),
+            os.path.join(tmpdir, "val"),
+            batch_size=4, augment=False,
+        )
+        assert isinstance(train_loader, DataLoader)
+        assert isinstance(val_loader, DataLoader)
+        images, labels = next(iter(train_loader))
+        assert images.shape[1] == 3   # channels first (C,H,W)
+        assert images.shape[2] == 32
+        assert images.shape[3] == 32
+        assert labels.dtype == torch.long
+
+
+def test_create_data_generators_augment_flag():
+    import os, tempfile
+    import numpy as np
+    from PIL import Image
+    from torch.utils.data import DataLoader
+    from data_preprocessing import create_data_generators
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for split in ["train", "val"]:
+            for cls in ["cat", "dog"]:
+                cls_dir = os.path.join(tmpdir, split, cls)
+                os.makedirs(cls_dir)
+                for i in range(5):
+                    img = Image.fromarray(
+                        np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8))
+                    img.save(os.path.join(cls_dir, f"img_{i}.png"))
+
+        for augment in [True, False]:
+            train_loader, val_loader = create_data_generators(
+                os.path.join(tmpdir, "train"),
+                os.path.join(tmpdir, "val"),
+                batch_size=4, augment=augment,
+            )
+            assert isinstance(train_loader, DataLoader)

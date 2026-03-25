@@ -82,58 +82,45 @@ def load_cinic_data(data_dir, subset="train"):
 
 def create_data_generators(train_dir, validation_dir, batch_size=32, augment=True):
     """
-    Create data generators for training and validation with optional augmentation.
-
-    Args:
-        train_dir (str): Path to training data directory
-        validation_dir (str): Path to validation data directory
-        batch_size (int): Batch size for generators
-        augment (bool): Whether to apply data augmentation
+    Create DataLoaders for training and validation.
 
     Returns:
-        tuple: (train_generator, validation_generator)
+        tuple: (train_loader, val_loader) -- torch DataLoader instances
+               Batches yield (images: FloatTensor (B,3,32,32), labels: LongTensor (B,))
     """
-    import tensorflow as tf
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
-    tf.random.set_seed(42)
+    import torch
+    from torch.utils.data import DataLoader
+    from torchvision import datasets, transforms
 
     if augment:
-        # Data augmentation for training
-        train_datagen = ImageDataGenerator(
-            rescale=1.0 / 255,
-            rotation_range=15,
-            width_shift_range=0.1,
-            height_shift_range=0.1,
-            shear_range=0.1,
-            zoom_range=0.1,
-            horizontal_flip=True,
-            fill_mode="nearest",
-        )
+        train_transform = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.RandomRotation(15),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1),
+                                    scale=(0.9, 1.1), shear=5.7),
+            transforms.ColorJitter(brightness=0.2),
+            transforms.ToTensor(),
+        ])
     else:
-        # No augmentation for training
-        train_datagen = ImageDataGenerator(rescale=1.0 / 255)
+        train_transform = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.ToTensor(),
+        ])
 
-    # Validation data generator (no augmentation)
-    validation_datagen = ImageDataGenerator(rescale=1.0 / 255)
+    val_transform = transforms.Compose([
+        transforms.Resize((32, 32)),
+        transforms.ToTensor(),
+    ])
 
-    # Create generators
-    train_generator = train_datagen.flow_from_directory(
-        train_dir,
-        target_size=(32, 32),
-        batch_size=batch_size,
-        class_mode="categorical",
-        shuffle=True,
-    )
+    train_dataset = datasets.ImageFolder(train_dir, transform=train_transform)
+    val_dataset = datasets.ImageFolder(validation_dir, transform=val_transform)
 
-    validation_generator = validation_datagen.flow_from_directory(
-        validation_dir,
-        target_size=(32, 32),
-        batch_size=batch_size,
-        class_mode="categorical",
-        shuffle=False,
-    )
-
-    return train_generator, validation_generator
+    train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                              shuffle=True, num_workers=0, pin_memory=False)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                            shuffle=False, num_workers=0, pin_memory=False)
+    return train_loader, val_loader
 
 
 def get_cinic_statistics(data_dir):
