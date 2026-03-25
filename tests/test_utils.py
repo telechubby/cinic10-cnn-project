@@ -39,16 +39,14 @@ def test_train_model_returns_history_lists():
 def test_train_model_early_stopping():
     from utils import train_model
     device = torch.device("cpu")
-    # Use a frozen (non-learning) model so val_accuracy never improves,
-    # guaranteeing early stopping triggers regardless of random seed.
     model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 8 * 8, 4)).to(device)
-    for p in model.parameters():
-        p.requires_grad_(False)
-    X = torch.zeros(8, 3, 8, 8)  # constant input -> constant output -> no accuracy gain
+    # Use constant inputs + constant labels: with lr=0 optimizer, weights never move,
+    # so val_accuracy stays constant and early stopping fires deterministically.
+    X = torch.zeros(8, 3, 8, 8)
     y = torch.zeros(8, dtype=torch.long)
     ds = TensorDataset(X, y)
     loader = DataLoader(ds, batch_size=4)
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.0)  # lr=0 => weights never move
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.0)  # lr=0 => no weight updates
     history = train_model(model, loader, loader, optimizer,
                           epochs=10, device=device, patience=1)
     assert len(history["loss"]) < 10

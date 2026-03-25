@@ -1,5 +1,4 @@
 """Shared PyTorch utilities: device detection, seeds, training loop."""
-import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -53,9 +52,8 @@ def train_model(
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
-            if loss.requires_grad:
-                loss.backward()
-                optimizer.step()
+            loss.backward()
+            optimizer.step()
             train_loss += loss.item() * images.size(0)
             train_correct += (outputs.argmax(dim=1) == labels).sum().item()
             train_total += images.size(0)
