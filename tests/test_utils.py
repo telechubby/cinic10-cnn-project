@@ -16,9 +16,20 @@ def test_get_device_returns_torch_device():
     assert device.type in ("mps", "cpu")
 
 
-def test_set_seeds_runs_without_error():
+def test_set_seeds_produces_deterministic_output():
     from utils import set_seeds
-    set_seeds(42)  # must not raise
+    import random
+    set_seeds(0)
+    v1_torch = torch.randn(3).tolist()
+    v1_np = np.random.rand(3).tolist()
+    v1_random = [random.random() for _ in range(3)]
+    set_seeds(0)
+    v2_torch = torch.randn(3).tolist()
+    v2_np = np.random.rand(3).tolist()
+    v2_random = [random.random() for _ in range(3)]
+    assert v1_torch == v2_torch
+    assert v1_np == v2_np
+    assert v1_random == v2_random
 
 
 def test_train_model_returns_history_lists():

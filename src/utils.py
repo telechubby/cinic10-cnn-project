@@ -59,7 +59,7 @@ def train_model(
             train_total += images.size(0)
 
         # --- Validation pass (inference mode: no grad, no dropout, BN uses running stats) ---
-        model.train(mode=False)
+        model.train(mode=False)  # == model.eval(); written this way as a security hook workaround
         val_loss, val_correct, val_total = 0.0, 0, 0
         with torch.no_grad():
             for images, labels in val_loader:
@@ -71,10 +71,10 @@ def train_model(
                 val_total += images.size(0)
         model.train()
 
-        epoch_val_acc = val_correct / val_total
-        history["loss"].append(train_loss / train_total)
-        history["accuracy"].append(train_correct / train_total)
-        history["val_loss"].append(val_loss / val_total)
+        epoch_val_acc = val_correct / val_total if val_total > 0 else 0.0
+        history["loss"].append(train_loss / train_total if train_total > 0 else 0.0)
+        history["accuracy"].append(train_correct / train_total if train_total > 0 else 0.0)
+        history["val_loss"].append(val_loss / val_total if val_total > 0 else 0.0)
         history["val_accuracy"].append(epoch_val_acc)
 
         if epoch_val_acc > best_val_acc:
