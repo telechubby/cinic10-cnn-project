@@ -20,10 +20,24 @@ def test_cutout_mask_size_attribute():
 def test_cutout_zeros_patch_on_chw_tensor():
     """Cutout sets a square region to 0 on a (C,H,W) tensor via img[:,y1:y2,x1:x2]=0."""
     from augmentation_studies import Cutout
+    np.random.seed(42)
     img = torch.ones(3, 32, 32)
-    result = Cutout(mask_size=8)(img)
+    cutout = Cutout(mask_size=8)
+    result = cutout(img)
     assert result.shape == (3, 32, 32)
-    assert (result == 0).any()
+    assert (result == 0).any(), "Expected some pixels to be zeroed"
+    # Verify zeroed region spans all 3 channels (not just one channel)
+    # Find any zeroed pixel and check all channels are zero there
+    zero_mask = (result == 0)
+    if zero_mask.any():
+        # Find a spatial location that is zero
+        zero_positions = zero_mask[0].nonzero(as_tuple=False)  # (N, 2) on first channel
+        if len(zero_positions) > 0:
+            h_idx, w_idx = zero_positions[0]
+            assert (result[:, h_idx, w_idx] == 0).all(), \
+                "Zeroed spatial location should be zero across ALL channels"
+    # Verify original image is unmodified (clone behavior)
+    assert (img == 1).all(), "Original image must not be modified (Cutout should clone)"
 
 
 def test_cutout_full_mask_zeros_all_spatial():
@@ -31,6 +45,8 @@ def test_cutout_full_mask_zeros_all_spatial():
     img = torch.ones(3, 32, 32)
     result = Cutout(mask_size=32)(img)
     assert result.shape == (3, 32, 32)
+    # With mask_size=32, the entire spatial region should be zeroed
+    assert (result == 0).all(), "Expected full-size mask to zero all spatial pixels"
 
 
 def test_evaluate_augmentation_effects_signature():

@@ -9,6 +9,9 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 CINIC_CLASSES = [
     "airplane", "automobile", "bird", "cat", "deer",
     "dog", "frog", "horse", "ship", "truck",
@@ -27,8 +30,8 @@ class Cutout:
     def __call__(self, img: torch.Tensor) -> torch.Tensor:
         _, h, w = img.shape
         half = self.mask_size // 2
-        cx = np.random.randint(0, w)
-        cy = np.random.randint(0, h)
+        cx = np.random.randint(half, max(half + 1, w - half + 1))
+        cy = np.random.randint(half, max(half + 1, h - half + 1))
         x1, x2 = max(0, cx - half), min(w, cx + half)
         y1, y2 = max(0, cy - half), min(h, cy + half)
         result = img.clone()
@@ -132,8 +135,6 @@ def apply_cutmix_augmentation(image1, image2, alpha=1.0):
 
 def evaluate_augmentation_effects(model_func, train_dir, val_dir,
                                    augmentation_configs, epochs=5, batch_size=32):
-    import sys, os as _os
-    sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     from utils import get_device, train_model
 
     device = get_device()
