@@ -98,7 +98,7 @@ def create_data_generators(train_dir, validation_dir, batch_size=32, augment=Tru
             transforms.RandomRotation(15),
             transforms.RandomHorizontalFlip(),
             transforms.RandomAffine(degrees=0, translate=(0.1, 0.1),
-                                    scale=(0.9, 1.1), shear=5.7),
+                                    scale=(0.9, 1.1), shear=5.7),  # 0.1 rad ≈ 5.7°
             transforms.ColorJitter(brightness=0.2),
             transforms.ToTensor(),
         ])

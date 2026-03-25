@@ -127,10 +127,19 @@ def test_create_data_generators_augment_flag():
                         np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8))
                     img.save(os.path.join(cls_dir, f"img_{i}.png"))
 
-        for augment in [True, False]:
-            train_loader, val_loader = create_data_generators(
-                os.path.join(tmpdir, "train"),
-                os.path.join(tmpdir, "val"),
-                batch_size=4, augment=augment,
-            )
-            assert isinstance(train_loader, DataLoader)
+        train_aug, _ = create_data_generators(
+            os.path.join(tmpdir, "train"),
+            os.path.join(tmpdir, "val"),
+            batch_size=4, augment=True,
+        )
+        train_no_aug, _ = create_data_generators(
+            os.path.join(tmpdir, "train"),
+            os.path.join(tmpdir, "val"),
+            batch_size=4, augment=False,
+        )
+        assert isinstance(train_aug, DataLoader)
+        assert isinstance(train_no_aug, DataLoader)
+        # augment=True should have more transform steps than augment=False
+        n_aug = len(train_aug.dataset.transform.transforms)
+        n_no_aug = len(train_no_aug.dataset.transform.transforms)
+        assert n_aug > n_no_aug, f"augment=True ({n_aug}) should have more transforms than augment=False ({n_no_aug})"
