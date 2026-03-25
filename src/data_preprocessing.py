@@ -220,6 +220,52 @@ def prepare_cinic_dataset(data_dir, output_dir, test_size=0.2, validation_size=0
     print("This function demonstrates how the preprocessing would be structured")
 
 
+def subsample_dataset(source_dir, dest_dir, fraction=None, n_per_class=None):
+    """
+    Copy a random subset of images from source_dir to dest_dir,
+    preserving class subdirectory structure.
+
+    Args:
+        source_dir (str): Path to dataset with class subdirectories
+        dest_dir (str): Destination path (created if not exists)
+        fraction (float): Proportion of images to copy per class (0.0–1.0)
+        n_per_class (int): Exact number of images to copy per class
+
+    Raises:
+        ValueError: If neither fraction nor n_per_class is provided
+    """
+    import shutil
+
+    if fraction is None and n_per_class is None:
+        raise ValueError("Must specify either fraction or n_per_class")
+
+    for class_name in os.listdir(source_dir):
+        class_src = os.path.join(source_dir, class_name)
+        if not os.path.isdir(class_src):
+            continue
+
+        class_dst = os.path.join(dest_dir, class_name)
+        os.makedirs(class_dst, exist_ok=True)
+
+        all_files = [
+            f for f in os.listdir(class_src)
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ]
+
+        if n_per_class is not None:
+            n = min(n_per_class, len(all_files))
+        else:
+            n = max(1, int(len(all_files) * fraction))
+
+        selected = np.random.choice(all_files, size=n, replace=False)
+
+        for fname in selected:
+            shutil.copy2(
+                os.path.join(class_src, fname),
+                os.path.join(class_dst, fname)
+            )
+
+
 # Example usage and testing
 if __name__ == "__main__":
     # This is just for demonstration - in actual usage you'd have the real data
