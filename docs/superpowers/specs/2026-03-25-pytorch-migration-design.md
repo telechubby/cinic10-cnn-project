@@ -256,7 +256,7 @@ Keep/add:
 ```
 torch>=2.4.0
 torchvision>=0.19.0
-torchinfo>=1.8.0   # optional, for get_model_summary()
+torchinfo>=1.8.0   # optional dev dependency, for get_model_summary()
 ```
 
 Also update the file change summary table to add the two new test files.
