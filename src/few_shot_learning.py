@@ -7,20 +7,16 @@ limited training data.
 """
 
 import os
+import tempfile
 from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from tensorflow import keras
-from tensorflow.keras import layers
 
 # Set random seeds for reproducibility
 np.random.seed(42)
-import tensorflow as tf
-
-tf.random.set_seed(42)
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
@@ -48,6 +44,10 @@ def create_siamese_network(input_shape=(32, 32, 3), embedding_dim=128):
     Returns:
         keras.Model: Compiled Siamese network model
     """
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    import tensorflow as tf
+
     # Input layer
     input_1 = keras.Input(shape=input_shape)
     input_2 = keras.Input(shape=input_shape)
@@ -116,6 +116,9 @@ def create_few_shot_classifier(input_shape=(32, 32, 3), num_classes=10):
     Returns:
         keras.Model: Compiled few-shot optimized classifier
     """
+    from tensorflow import keras
+    from tensorflow.keras import layers
+
     # Use a more robust architecture for few-shot scenarios
     model = keras.Sequential(
         [
@@ -172,6 +175,9 @@ def create_prototypical_network(
     Returns:
         keras.Model: Compiled prototypical network model
     """
+    from tensorflow import keras
+    from tensorflow.keras import layers
+
     # Input layer
     inputs = keras.Input(shape=input_shape)
 
@@ -218,155 +224,122 @@ def create_prototypical_network(
 
 def create_few_shot_evaluation(
     model_func,
-    train_generator,
-    validation_generator,
-    few_shot_samples=[1, 5, 10],
+    train_dir,
+    val_dir,
+    few_shot_samples=None,
     epochs=10,
+    batch_size=32,
 ):
     """
-    Evaluate few-shot learning performance on reduced datasets.
+    Evaluate few-shot learning performance by training on N samples per class.
+
+    Creates a temporary dataset with exactly N images per class, trains a fresh
+    model, and evaluates on the full validation set.
 
     Args:
         model_func: Function to create the CNN model
-        train_generator: Training data generator
-        validation_generator: Validation data generator
-        few_shot_samples (list): Number of samples per class to use for few-shot training
-        epochs (int): Number of epochs to train for each configuration
+        train_dir (str): Path to full training data (class subdirs)
+        val_dir (str): Path to validation data (class subdirs)
+        few_shot_samples (list): Number of samples per class to use
+        epochs (int): Training epochs per configuration
+        batch_size (int): Batch size for generators
 
     Returns:
-        dict: Results of few-shot evaluation
+        list: Dicts with keys: samples_per_class, train_accuracy, val_accuracy,
+              train_loss, val_loss, epochs
     """
+    import sys
+    import os as _os
+    sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from data_preprocessing import subsample_dataset
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    from tensorflow import keras
+
+    if few_shot_samples is None:
+        few_shot_samples = [1, 5, 10]
+
     results = []
 
-    for samples_per_class in few_shot_samples:
-        print(
-            f"Evaluating few-shot learning with {samples_per_class} samples per class..."
-        )
+    val_datagen = ImageDataGenerator(rescale=1.0 / 255)
+    val_gen = val_datagen.flow_from_directory(
+        val_dir, target_size=(32, 32), batch_size=batch_size,
+        class_mode="categorical", shuffle=False
+    )
 
-        try:
-            # Create model
+    for n in few_shot_samples:
+        print(f"Evaluating few-shot with {n} samples per class...")
+
+        with tempfile.TemporaryDirectory() as tmp_train:
+            subsample_dataset(train_dir, tmp_train, n_per_class=n)
+
+            # Use small batch size when n is very small
+            actual_batch = min(batch_size, n * 10)
+            train_datagen = ImageDataGenerator(rescale=1.0 / 255)
+            train_gen = train_datagen.flow_from_directory(
+                tmp_train, target_size=(32, 32), batch_size=actual_batch,
+                class_mode="categorical", shuffle=True
+            )
+
             model = model_func()
-
-            # Compile model
             model.compile(
-                optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
+                optimizer=keras.optimizers.Adam(learning_rate=0.0005),
+                loss="categorical_crossentropy",
+                metrics=["accuracy"],
             )
 
-            # For demonstration, we'll just record the configuration
-            # In a real implementation, you would actually train with reduced datasets
-
-            results.append(
-                {
-                    "samples_per_class": samples_per_class,
-                    "train_accuracy": 0.0,  # Placeholder
-                    "val_accuracy": 0.0,  # Placeholder
-                    "train_loss": 0.0,  # Placeholder
-                    "val_loss": 0.0,  # Placeholder
-                    "epochs": epochs,
-                }
+            history = model.fit(
+                train_gen, epochs=epochs,
+                validation_data=val_gen, verbose=0
             )
 
-        except Exception as e:
-            print(f"Error with {samples_per_class} samples per class: {e}")
-            results.append(
-                {
-                    "samples_per_class": samples_per_class,
-                    "train_accuracy": 0.0,
-                    "val_accuracy": 0.0,
-                    "train_loss": 0.0,
-                    "val_loss": 0.0,
-                    "epochs": epochs,
-                }
-            )
+            results.append({
+                "samples_per_class": n,
+                "train_accuracy": history.history["accuracy"][-1],
+                "val_accuracy": history.history["val_accuracy"][-1],
+                "train_loss": history.history["loss"][-1],
+                "val_loss": history.history["val_loss"][-1],
+                "epochs": epochs,
+            })
+            print(f"  n={n}: val_acc={results[-1]['val_accuracy']:.4f}")
 
     return results
 
 
 def evaluate_few_shot_performance(
-    model_func, train_generator, validation_generator, few_shot_configs=[1, 5, 10]
+    model_func, train_dir, val_dir,
+    few_shot_configs=None, epochs=10, batch_size=32
 ):
     """
-    Evaluate the performance of different few-shot learning approaches.
+    Evaluate the performance of few-shot learning with varying sample counts.
 
     Args:
         model_func: Function to create the CNN model
-        train_generator: Training data generator
-        validation_generator: Validation data generator
-        few_shot_configs (list): Different few-shot configurations to test
+        train_dir (str): Path to training data (class subdirs)
+        val_dir (str): Path to validation data (class subdirs)
+        few_shot_configs (list): Sample counts per class to test, e.g. [1, 5, 10]
+        epochs (int): Training epochs per configuration
+        batch_size (int): Batch size for generators
 
     Returns:
-        dict: Detailed evaluation results
+        dict: {"few_shot": list of result dicts}
     """
     print("Starting few-shot learning performance evaluation...")
 
-    # 1. Evaluate with reduced training data (simulated)
-    print("\n1. Evaluating few-shot performance with reduced datasets...")
+    if few_shot_configs is None:
+        few_shot_configs = [1, 5, 10]
+
+    print(f"\nEvaluating few-shot performance with {few_shot_configs} samples per class...")
     few_shot_results = create_few_shot_evaluation(
         model_func,
-        train_generator,
-        validation_generator,
+        train_dir=train_dir,
+        val_dir=val_dir,
         few_shot_samples=few_shot_configs,
-        epochs=5,
+        epochs=epochs,
+        batch_size=batch_size,
     )
 
-    # 2. Evaluate Siamese network approach (if available)
-    print("\n2. Evaluating Siamese network for few-shot learning...")
-    try:
-        siamese_model = create_siamese_network()
-        # Placeholder results for demonstration
-        siamese_results = {
-            "model_type": "Siamese",
-            "train_accuracy": 0.0,
-            "val_accuracy": 0.0,
-            "train_loss": 0.0,
-            "val_loss": 0.0,
-            "epochs": 5,
-        }
-    except Exception as e:
-        print(f"Siamese network evaluation error: {e}")
-        siamese_results = {
-            "model_type": "Siamese",
-            "train_accuracy": 0.0,
-            "val_accuracy": 0.0,
-            "train_loss": 0.0,
-            "val_loss": 0.0,
-            "epochs": 5,
-        }
-
-    # 3. Evaluate prototypical network approach (if available)
-    print("\n3. Evaluating prototypical network for few-shot learning...")
-    try:
-        proto_model = create_prototypical_network()
-        # Placeholder results for demonstration
-        proto_results = {
-            "model_type": "Prototypical",
-            "train_accuracy": 0.0,
-            "val_accuracy": 0.0,
-            "train_loss": 0.0,
-            "val_loss": 0.0,
-            "epochs": 5,
-        }
-    except Exception as e:
-        print(f"Prototypical network evaluation error: {e}")
-        proto_results = {
-            "model_type": "Prototypical",
-            "train_accuracy": 0.0,
-            "val_accuracy": 0.0,
-            "train_loss": 0.0,
-            "val_loss": 0.0,
-            "epochs": 5,
-        }
-
-    # Combine all results
-    all_results = {
-        "few_shot": few_shot_results,
-        "siamese": siamese_results,
-        "prototypical": proto_results,
-    }
-
     print("\nFew-shot learning evaluation completed successfully!")
-
-    return all_results
+    return {"few_shot": few_shot_results}
 
 
 def plot_few_shot_results(results_df, title="Few-Shot Learning Performance"):
