@@ -49,12 +49,12 @@ def load_cinic_data(data_dir, subset="train"):
     # Define paths for different subsets
     if subset == "train":
         data_path = os.path.join(data_dir, "train")
-    elif subset == "validation":
-        data_path = os.path.join(data_dir, "validation")
+    elif subset == "valid":
+        data_path = os.path.join(data_dir, "valid")
     elif subset == "test":
         data_path = os.path.join(data_dir, "test")
     else:
-        raise ValueError("Subset must be 'train', 'validation', or 'test'")
+        raise ValueError("Subset must be 'train', 'valid', or 'test'")
 
     # Collect all image paths and labels
     image_paths = []
@@ -211,7 +211,7 @@ def prepare_cinic_dataset(data_dir, output_dir, test_size=0.2, validation_size=0
     """
     # Create output directories
     os.makedirs(os.path.join(output_dir, "train"), exist_ok=True)
-    os.makedirs(os.path.join(output_dir, "validation"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "valid"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "test"), exist_ok=True)
 
     # For demonstration, we'll create a simplified version of the preprocessing
