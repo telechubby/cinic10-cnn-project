@@ -41,7 +41,7 @@ def load_cinic_data(data_dir, subset="train"):
 
     Args:
         data_dir (str): Path to the CINIC-10 dataset directory
-        subset (str): Which subset to load ('train', 'validation', 'test')
+        subset (str): Which subset to load ('train', 'valid', 'test')
 
     Returns:
         tuple: (images, labels) numpy arrays
