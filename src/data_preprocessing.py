@@ -11,14 +11,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import tensorflow as tf
 from PIL import Image
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 # Set random seeds for reproducibility
 np.random.seed(42)
-tf.random.set_seed(42)
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
@@ -96,6 +93,9 @@ def create_data_generators(train_dir, validation_dir, batch_size=32, augment=Tru
     Returns:
         tuple: (train_generator, validation_generator)
     """
+    import tensorflow as tf
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    tf.random.set_seed(42)
 
     if augment:
         # Data augmentation for training
