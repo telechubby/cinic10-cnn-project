@@ -15,13 +15,9 @@ import pandas as pd
 import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import cross_val_score
-from tensorflow import keras
 
 # Set random seeds for reproducibility
 np.random.seed(42)
-import tensorflow as tf
-
-tf.random.set_seed(42)
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
@@ -316,78 +312,165 @@ def compare_model_performance(
 
 def create_model_comparison_visualizations(comparison_results):
     """
-    Create visualizations comparing different model performances.
+    Create bar-chart visualizations comparing multiple model performances.
 
     Args:
-        comparison_results (list): List of model performance results
+        comparison_results (list): List of dicts with keys:
+            model_name, test_accuracy, test_loss, top_1_accuracy, top_5_accuracy
     """
-    # Convert to DataFrame for easier handling
     df = pd.DataFrame(comparison_results)
 
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     fig.suptitle("Model Performance Comparison", fontsize=16, fontweight="bold")
 
-    # Plot 1: Accuracy comparison
     axes[0, 0].bar(df["model_name"], df["test_accuracy"], color="lightblue")
-    axes[0, 0].set_xlabel("Models")
+    axes[0, 0].set_xlabel("Model")
     axes[0, 0].set_ylabel("Test Accuracy")
-    axes[0, 0].set_title("Accuracy Comparison")
+    axes[0, 0].set_title("Test Accuracy")
     axes[0, 0].tick_params(axis="x", rotation=45)
 
-    # Plot 2: Loss comparison
     axes[0, 1].bar(df["model_name"], df["test_loss"], color="lightcoral")
-    axes[0, 1].set_xlabel("Models")
+    axes[0, 1].set_xlabel("Model")
     axes[0, 1].set_ylabel("Test Loss")
-    axes[0, 1].set_title("Loss Comparison")
+    axes[0, 1].set_title("Test Loss")
     axes[0, 1].tick_params(axis="x", rotation=45)
 
-    # Plot 3: Top-1 Accuracy comparison
     axes[1, 0].bar(df["model_name"], df["top_1_accuracy"], color="lightgreen")
-    axes[1, 0].set_xlabel("Models")
+    axes[1, 0].set_xlabel("Model")
     axes[1, 0].set_ylabel("Top-1 Accuracy")
-    axes[1, 0].set_title("Top-1 Accuracy Comparison")
+    axes[1, 0].set_title("Top-1 Accuracy")
     axes[1, 0].tick_params(axis="x", rotation=45)
 
-    # Plot 4: Top-5 Accuracy comparison
     axes[1, 1].bar(df["model_name"], df["top_5_accuracy"], color="lightyellow")
-    axes[1, 1].set_xlabel("Models")
+    axes[1, 1].set_xlabel("Model")
     axes[1, 1].set_ylabel("Top-5 Accuracy")
-    axes[1, 1].set_title("Top-5 Accuracy Comparison")
-    axes[1, 1].tick以下示例代码，展示如何使用此模块：
+    axes[1, 1].set_title("Top-5 Accuracy")
+    axes[1, 1].tick_params(axis="x", rotation=45)
 
-    ```python
-    # Example usage:
-    # from src.evaluation import *
-    #
-    # # Assuming you have trained models and test data
-    # model = create_baseline_cnn()
-    #
-    # # Evaluate the model
-    # perf_metrics = calculate_performance_metrics(model, test_generator)
-    #
-    # # Perform statistical analysis
-    # stats = perform_statistical_analysis(model, test_generator, num_repeats=3)
-    #
-    # # Create visualizations
-    # create_performance_visualizations(model, test_generator)
-    #
-    # # Save results
-    # save_evaluation_results(model, test_generator, perf_metrics, stats)
-    #
-    # # Compare models
-    # models = {
-    #     "Baseline": create_baseline_cnn(),
-    #     "Deep": create_deep_cnn(),
-    #     "Efficient": create_efficient_cnn()
-    # }
-    #
-    # comparison_results = compare_model_performance(models, test_generator)
-    # ```
+    plt.tight_layout()
+    plt.show()
+
+
+def run_reduced_dataset_experiment(
+    model_func, train_dir, val_dir,
+    fractions=None, epochs=10, batch_size=32
+):
+    """
+    Evaluate model performance with progressively larger training subsets.
+
+    For each fraction, copies a random subset of training images to a temp
+    directory, trains a fresh model, and records validation performance.
+
+    Args:
+        model_func: Callable returning a compiled Keras model
+        train_dir (str): Path to full training set (class subdirectories)
+        val_dir (str): Path to validation set (class subdirectories)
+        fractions (list): Fractions of training data, e.g. [0.1, 0.25, 0.5, 1.0]
+        epochs (int): Training epochs per fraction
+        batch_size (int): Batch size for generators
+
+    Returns:
+        list: Dicts with keys: fraction, val_accuracy, val_loss, num_train_samples
+    """
+    import tempfile
+    import shutil
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    from data_preprocessing import subsample_dataset
+
+    if fractions is None:
+        fractions = [0.1, 0.25, 0.5, 1.0]
+
+    val_datagen = ImageDataGenerator(rescale=1.0 / 255)
+    val_gen = val_datagen.flow_from_directory(
+        val_dir, target_size=(32, 32), batch_size=batch_size,
+        class_mode="categorical", shuffle=False
+    )
+
+    results = []
+
+    for fraction in fractions:
+        print(f"\nTraining with {fraction*100:.0f}% of training data...")
+
+        with tempfile.TemporaryDirectory() as tmp_train:
+            if fraction < 1.0:
+                subsample_dataset(train_dir, tmp_train, fraction=fraction)
+                active_train_dir = tmp_train
+            else:
+                active_train_dir = train_dir
+
+            num_samples = sum(
+                len(os.listdir(os.path.join(active_train_dir, c)))
+                for c in os.listdir(active_train_dir)
+                if os.path.isdir(os.path.join(active_train_dir, c))
+            )
+
+            train_datagen = ImageDataGenerator(
+                rescale=1.0 / 255,
+                horizontal_flip=True,
+                width_shift_range=0.1,
+                height_shift_range=0.1,
+            )
+            train_gen = train_datagen.flow_from_directory(
+                active_train_dir, target_size=(32, 32),
+                batch_size=batch_size, class_mode="categorical", shuffle=True
+            )
+
+            model = model_func()
+            history = model.fit(
+                train_gen, epochs=epochs,
+                validation_data=val_gen, verbose=1
+            )
+
+            val_acc = history.history["val_accuracy"][-1]
+            val_loss = history.history["val_loss"][-1]
+
+            results.append({
+                "fraction": fraction,
+                "val_accuracy": val_acc,
+                "val_loss": val_loss,
+                "num_train_samples": num_samples,
+            })
+            print(f"  fraction={fraction:.2f} | val_acc={val_acc:.4f} | samples={num_samples}")
+
+    return results
+
+
+def plot_reduced_dataset_results(results, save_path=None):
+    """
+    Plot validation accuracy vs. training set size (learning curve).
+
+    Args:
+        results (list): Output of run_reduced_dataset_experiment()
+        save_path (str): Optional path to save the plot
+    """
+    fractions = [r["fraction"] for r in results]
+    val_accs = [r["val_accuracy"] for r in results]
+    num_samples = [r["num_train_samples"] for r in results]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle("Reduced Dataset Analysis", fontsize=14, fontweight="bold")
+
+    axes[0].plot(fractions, val_accs, "o-", color="steelblue")
+    axes[0].set_xlabel("Training Fraction")
+    axes[0].set_ylabel("Validation Accuracy")
+    axes[0].set_title("Val Accuracy vs. Training Fraction")
+    axes[0].grid(True)
+
+    axes[1].plot(num_samples, val_accs, "o-", color="darkorange")
+    axes[1].set_xlabel("Number of Training Samples")
+    axes[1].set_ylabel("Validation Accuracy")
+    axes[1].set_title("Val Accuracy vs. Sample Count")
+    axes[1].grid(True)
+
+    plt.tight_layout()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.show()
+
 
 if __name__ == "__main__":
     print("Evaluation Module loaded successfully")
-
-    # Print available functions
     print("\nAvailable evaluation functions:")
     print("- calculate_performance_metrics()")
     print("- generate_confusion_matrix()")
@@ -396,4 +479,5 @@ if __name__ == "__main__":
     print("- save_evaluation_results()")
     print("- compare_model_performance()")
     print("- create_model_comparison_visualizations()")
-```
+    print("- run_reduced_dataset_experiment()")
+    print("- plot_reduced_dataset_results()")
