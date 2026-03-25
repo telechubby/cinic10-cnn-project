@@ -2,51 +2,34 @@
 """
 Main Experiment Script for CINIC-10 CNN Project
 
-This script orchestrates the complete experiment pipeline for CNN image
-classification on the CINIC-10 dataset, including data preprocessing,
-model training, hyperparameter analysis, augmentation studies, and
-few-shot learning evaluation.
+Orchestrates the complete experiment pipeline:
+  1. Baseline CNN training
+  2. Hyperparameter analysis (learning rates, batch sizes, regularization, optimizers)
+  3. Data augmentation studies (standard + cutout)
+  4. Few-shot learning evaluation
+  5. Reduced dataset analysis
 """
 
 import os
 import sys
 
 # Add src directory to Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+sys.path.append(os.path.dirname(__file__))
 
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 
-from augmentation_studies import (
-    compare_augmentation_approaches,
-    create_advanced_augmentation_generators,
-    create_standard_augmentation_generators,
-)
-
-# Import project modules
-from data_preprocessing import create_data_generators, load_cinic_data
+from augmentation_studies import compare_augmentation_approaches
+from data_preprocessing import create_data_generators
 from evaluation import (
-    calculate_performance_metrics,
     compare_model_performance,
-    create_performance_visualizations,
-    perform_statistical_analysis,
-    save_evaluation_results,
+    run_reduced_dataset_experiment,
+    plot_reduced_dataset_results,
 )
-from few_shot_learning import (
-    create_few_shot_classifier,
-    create_prototypical_network,
-    evaluate_few_shot_performance,
-)
-from hyperparameter_analysis import (
-    analyze_batch_sizes,
-    analyze_learning_rates,
-    analyze_optimizers,
-    analyze_regularization_strengths,
-    create_comprehensive_hyperparameter_analysis,
-)
+from few_shot_learning import evaluate_few_shot_performance
+from hyperparameter_analysis import create_comprehensive_hyperparameter_analysis
 from model_architecture import (
     create_baseline_cnn,
     create_cnn_with_regularization,
@@ -55,145 +38,189 @@ from model_architecture import (
     create_few_shot_cnn,
 )
 
-# Set random seeds for reproducibility
+# Set random seed for reproducibility
 np.random.seed(42)
-tf.random.set_seed(42)
+
+# ── Dataset paths ─────────────────────────────────────────────────────────────
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR  = os.path.join(_PROJECT_ROOT, "data")
+TRAIN_DIR = os.path.join(DATA_DIR, "train")
+VAL_DIR   = os.path.join(DATA_DIR, "valid")
+TEST_DIR  = os.path.join(DATA_DIR, "test")
+RESULTS_DIR = os.path.join(_PROJECT_ROOT, "results")
+MODELS_DIR  = os.path.join(_PROJECT_ROOT, "models")
+
+# ── Experiment config ─────────────────────────────────────────────────────────
+EPOCHS_BASELINE    = 20
+EPOCHS_HP_SEARCH   = 5   # shorter sweeps for hyperparameter search
+EPOCHS_AUGMENTATION = 5
+EPOCHS_FEW_SHOT    = 15
+BATCH_SIZE = 32
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
-    "airplane",
-    "automobile",
-    "bird",
-    "cat",
-    "deer",
-    "dog",
-    "frog",
-    "horse",
-    "ship",
-    "truck",
+    "airplane", "automobile", "bird", "cat", "deer",
+    "dog", "frog", "horse", "ship", "truck",
 ]
 
 
 def setup_project_directories():
     """Create necessary project directories."""
-    dirs = ["data", "models", "results", "src", "notebooks"]
-
-    for directory in dirs:
-        os.makedirs(directory, exist_ok=True)
-
+    for d in [DATA_DIR, MODELS_DIR, RESULTS_DIR]:
+        os.makedirs(d, exist_ok=True)
     print("Project directories set up successfully")
 
 
 def run_baseline_experiment():
-    """Run baseline CNN experiment."""
+    """Train baseline CNN and save best weights."""
     print("=" * 60)
     print("RUNNING BASELINE EXPERIMENT")
     print("=" * 60)
 
-    # Create baseline model
-    baseline_model = create_baseline_cnn()
-    print("✓ Baseline CNN model created")
+    from tensorflow import keras
 
-    # Get model summary
+    train_gen, val_gen = create_data_generators(
+        TRAIN_DIR, VAL_DIR, batch_size=BATCH_SIZE, augment=False
+    )
+
+    baseline_model = create_baseline_cnn()
     baseline_model.summary()
 
-    return baseline_model
+    history = baseline_model.fit(
+        train_gen,
+        epochs=EPOCHS_BASELINE,
+        validation_data=val_gen,
+        callbacks=[
+            keras.callbacks.ModelCheckpoint(
+                os.path.join(MODELS_DIR, "baseline_cnn.keras"),
+                save_best_only=True,
+                monitor="val_accuracy",
+            ),
+            keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
+        ],
+        verbose=1,
+    )
+
+    final_val_acc = history.history["val_accuracy"][-1]
+    print(f"✓ Baseline final val_acc: {final_val_acc:.4f}")
+    return baseline_model, history
 
 
 def run_hyperparameter_analysis():
-    """Run comprehensive hyperparameter analysis."""
+    """Run comprehensive hyperparameter analysis and save results."""
     print("\n" + "=" * 60)
     print("RUNNING HYPERPARAMETER ANALYSIS")
     print("=" * 60)
 
-    # For demonstration, we'll just show what would be analyzed
-    print("✓ Hyperparameter analysis framework ready")
-    print("  - Learning rates: [0.0001, 0.001, 0.01, 0.1]")
-    print("  - Batch sizes: [16, 32, 64]")
-    print(
-        "  - Regularization: Dropout rates [0.1, 0.2, 0.3, 0.5], Weight decay [1e-4, 1e-3, 1e-2]"
+    results = create_comprehensive_hyperparameter_analysis(
+        create_baseline_cnn, TRAIN_DIR, VAL_DIR
     )
-    print("  - Optimizers: [adam, sgd, rmsprop]")
 
-    # In a real implementation, you would:
-    # 1. Create data generators
-    # 2. Run analysis functions
-    # 3. Save and visualize results
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    for key, val in results.items():
+        pd.DataFrame(val).to_csv(
+            os.path.join(RESULTS_DIR, f"hp_{key}.csv"), index=False
+        )
+        print(f"  Saved: results/hp_{key}.csv")
 
-    return "hyperparameter_analysis_complete"
+    print("✓ Hyperparameter analysis complete")
+    return results
 
 
 def run_augmentation_studies():
-    """Run data augmentation analysis."""
+    """Run data augmentation comparison and save results."""
     print("\n" + "=" * 60)
     print("RUNNING DATA AUGMENTATION STUDIES")
     print("=" * 60)
 
-    # For demonstration, we'll just show what would be analyzed
-    print("✓ Data augmentation analysis framework ready")
-    print("  - Standard augmentations:")
-    print("    * Random horizontal flip")
-    print("    * Random crop and resize")
-    print("    * Color jittering")
-    print("  - Advanced augmentations:")
-    print("    * Cutout augmentation")
-    print("    * Mixup (simulated)")
-    print("    * AutoAugment-like approach")
+    results = compare_augmentation_approaches(
+        create_baseline_cnn, TRAIN_DIR, VAL_DIR,
+        epochs=EPOCHS_AUGMENTATION, batch_size=BATCH_SIZE
+    )
 
-    # In a real implementation, you would:
-    # 1. Create augmentation generators
-    # 2. Evaluate each approach
-    # 3. Save and visualize results
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    for key, val in results.items():
+        pd.DataFrame(val).to_csv(
+            os.path.join(RESULTS_DIR, f"aug_{key}.csv"), index=False
+        )
+        print(f"  Saved: results/aug_{key}.csv")
 
-    return "augmentation_analysis_complete"
+    print("✓ Augmentation analysis complete")
+    return results
 
 
 def run_few_shot_evaluation():
-    """Run few-shot learning evaluation."""
+    """Run few-shot learning evaluation and save results."""
     print("\n" + "=" * 60)
     print("RUNNING FEW-SHOT LEARNING EVALUATION")
     print("=" * 60)
 
-    # For demonstration, we'll just show what would be evaluated
-    print("✓ Few-shot learning framework ready")
-    print("  - Reduced dataset sizes: [1, 5, 10] samples per class")
-    print("  - Model types:")
-    print("    * Standard CNN classifier (optimized for few-shot)")
-    print("    * Siamese network")
-    print("    * Prototypical network")
+    results = evaluate_few_shot_performance(
+        create_few_shot_cnn,
+        TRAIN_DIR,
+        VAL_DIR,
+        few_shot_configs=[1, 5, 10, 50],
+        epochs=EPOCHS_FEW_SHOT,
+        batch_size=BATCH_SIZE,
+    )
 
-    # In a real implementation, you would:
-    # 1. Create few-shot models
-    # 2. Evaluate performance with reduced datasets
-    # 3. Compare approaches
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    pd.DataFrame(results["few_shot"]).to_csv(
+        os.path.join(RESULTS_DIR, "few_shot_results.csv"), index=False
+    )
+    print("  Saved: results/few_shot_results.csv")
+    print("✓ Few-shot evaluation complete")
+    return results
 
-    return "few_shot_analysis_complete"
 
-
-def run_model_comparison():
-    """Run comparison of different model architectures."""
+def run_reduced_dataset_analysis():
+    """Run reduced training set size analysis and save learning curve."""
     print("\n" + "=" * 60)
-    print("RUNNING MODEL ARCHITECTURE COMPARISON")
+    print("RUNNING REDUCED DATASET ANALYSIS")
     print("=" * 60)
 
-    # Create different model architectures for comparison
-    models = {
-        "Baseline": create_baseline_cnn(),
-        "Deep": create_deep_cnn(),
-        "Efficient": create_efficient_cnn(),
-        "Regularized": create_cnn_with_regularization(),
-        "Few-shot Optimized": create_few_shot_cnn(),
-    }
+    results = run_reduced_dataset_experiment(
+        create_baseline_cnn,
+        TRAIN_DIR,
+        VAL_DIR,
+        fractions=[0.1, 0.25, 0.5, 1.0],
+        epochs=EPOCHS_AUGMENTATION,
+        batch_size=BATCH_SIZE,
+    )
 
-    print("✓ Model comparison framework ready")
-    print("  - Comparing 5 different CNN architectures")
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    plot_reduced_dataset_results(
+        results,
+        save_path=os.path.join(RESULTS_DIR, "reduced_dataset_curve.png"),
+    )
+    pd.DataFrame(results).to_csv(
+        os.path.join(RESULTS_DIR, "reduced_dataset_results.csv"), index=False
+    )
+    print("  Saved: results/reduced_dataset_results.csv")
+    print("  Saved: results/reduced_dataset_curve.png")
+    print("✓ Reduced dataset analysis complete")
+    return results
 
-    # In a real implementation, you would:
-    # 1. Train each model
-    # 2. Evaluate performance
-    # 3. Compare results
 
-    return models
+def save_experiment_summary(timestamp, results_map):
+    """Write a plain-text summary of the experiment run."""
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    summary_file = os.path.join(RESULTS_DIR, f"experiment_summary_{timestamp}.txt")
+
+    with open(summary_file, "w") as f:
+        f.write("CINIC-10 CNN Experiment Summary\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(f"Timestamp: {timestamp}\n")
+        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+        f.write("Completed experiments:\n")
+        for name, result in results_map.items():
+            status = "✓" if result is not None else "✗ (skipped)"
+            f.write(f"  {status} {name}\n")
+
+        f.write("\nResults saved to: results/\n")
+
+    print(f"\nExperiment summary saved to {summary_file}")
 
 
 def run_comprehensive_experiment():
@@ -201,112 +228,49 @@ def run_comprehensive_experiment():
     print("Starting Comprehensive CINIC-10 CNN Experiment")
     print("=" * 60)
 
-    # Timestamp for experiment run
-    experiment_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    print(f"Experiment timestamp: {experiment_timestamp}")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    print(f"Experiment timestamp: {timestamp}")
 
-    # Setup project directories
     setup_project_directories()
 
-    # 1. Run baseline experiment
-    baseline_model = run_baseline_experiment()
+    results_map = {}
 
-    # 2. Run hyperparameter analysis (mock implementation)
+    # 1. Baseline
+    baseline_model, baseline_history = run_baseline_experiment()
+    results_map["baseline"] = baseline_history
+
+    # 2. Hyperparameter analysis
     hp_results = run_hyperparameter_analysis()
+    results_map["hyperparameter_analysis"] = hp_results
 
-    # 3. Run augmentation studies (mock implementation)
+    # 3. Augmentation studies
     aug_results = run_augmentation_studies()
+    results_map["augmentation_studies"] = aug_results
 
-    # 4. Run few-shot evaluation (mock implementation)
+    # 4. Few-shot evaluation
     few_shot_results = run_few_shot_evaluation()
+    results_map["few_shot_evaluation"] = few_shot_results
 
-    # 5. Run model comparison
-    models = run_model_comparison()
+    # 5. Reduced dataset analysis
+    reduced_results = run_reduced_dataset_analysis()
+    results_map["reduced_dataset_analysis"] = reduced_results
 
-    # 6. Save experiment summary
-    save_experiment_summary(
-        experiment_timestamp,
-        baseline_model,
-        hp_results,
-        aug_results,
-        few_shot_results,
-        models,
-    )
+    save_experiment_summary(timestamp, results_map)
 
     print("\n" + "=" * 60)
     print("EXPERIMENT COMPLETED SUCCESSFULLY")
     print("=" * 60)
 
-    return "experiment_complete"
-
-
-def save_experiment_summary(
-    timestamp, baseline_model, hp_results, aug_results, few_shot_results, models
-):
-    """Save experiment summary to file."""
-
-    # Create summary content
-    summary_content = f"""CINIC-10 CNN Experiment Summary
-===============================
-
-Timestamp: {timestamp}
-Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-Experiment Overview:
---------------------
-This experiment evaluates convolutional neural networks for image classification
-on the CINIC-10 dataset with focus on:
-
-1. Hyperparameter optimization
-2. Data augmentation techniques
-3. Few-shot learning capabilities
-4. Model architecture comparison
-
-Key Results:
-------------
-Baseline Model: ✓ Created and configured
-Hyperparameter Analysis: ✓ Framework ready
-Data Augmentation Studies: ✓ Framework ready
-Few-Shot Learning: ✓ Framework ready
-Model Comparison: ✓ Ready
-
-Models Evaluated:
------------------
-- Baseline CNN
-- Deep CNN
-- Efficient CNN
-- Regularized CNN
-- Few-shot Optimized CNN
-
-Next Steps:
------------
-1. Execute actual training with real data
-2. Evaluate model performance on validation set
-3. Generate detailed reports and visualizations
-4. Document findings for project submission
-
-"""
-
-    # Save to results directory
-    summary_file = f"results/experiment_summary_{timestamp}.txt"
-    with open(summary_file, "w") as f:
-        f.write(summary_content)
-
-    print(f"Experiment summary saved to {summary_file}")
+    return results_map
 
 
 def main():
-    """Main function to run the complete experiment pipeline."""
+    """Entry point."""
     try:
         print("Starting CINIC-10 CNN Deep Learning Project")
         print("===========================================")
-
-        # Run the complete experiment
-        result = run_comprehensive_experiment()
-
-        print(f"\nFinal status: {result}")
+        run_comprehensive_experiment()
         print("\nProject execution completed successfully!")
-
     except Exception as e:
         print(f"Error during experiment execution: {e}")
         raise
