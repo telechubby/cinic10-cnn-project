@@ -1,391 +1,178 @@
-"""
-CNN Model Architecture Module for CINIC-10 Image Classification
-
-This module defines various CNN architectures suitable for the CINIC-10 dataset,
-including baseline models and specialized architectures for different experimental
-requirements.
-"""
-
+"""CNN Model Architecture Module -- PyTorch nn.Module implementations."""
 import numpy as np
+import torch
+import torch.nn as nn
 
-# TensorFlow is imported lazily inside each function to avoid macOS bus error
-# on Python 3.12 when importing at module level.
-
-# Set random seed for reproducibility
 np.random.seed(42)
 
-# CINIC-10 class labels
 CINIC_CLASSES = [
-    "airplane",
-    "automobile",
-    "bird",
-    "cat",
-    "deer",
-    "dog",
-    "frog",
-    "horse",
-    "ship",
-    "truck",
+    "airplane", "automobile", "bird", "cat", "deer",
+    "dog", "frog", "horse", "ship", "truck",
 ]
 
 
-def _keras():
-    """Lazy import helper — returns (keras, layers) to avoid module-level TF crash."""
-    from tensorflow import keras as _k
-    from tensorflow.keras import layers as _l
-    import tensorflow as tf
-    tf.random.set_seed(42)
-    return _k, _l
+class BaselineCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+        )
+        # 32x32 -> 16x16 -> 8x8 -> 4x4; 128 channels -> 128*4*4 = 2048
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 512), nn.ReLU(), nn.BatchNorm1d(512),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
 
 
 def create_baseline_cnn(input_shape=(32, 32, 3), num_classes=10):
-    """
-    Create a baseline CNN architecture for CINIC-10 classification.
+    return BaselineCNN(num_classes=num_classes)
 
-    Args:
-        input_shape (tuple): Input image dimensions (height, width, channels)
-        num_classes (int): Number of output classes
 
-    Returns:
-        keras.Model: Compiled CNN model
-    """
-    keras, layers = _keras()
-    model = keras.Sequential(
-        [
-            # First convolutional block
-            layers.Conv2D(32, (3, 3), activation="relu", input_shape=input_shape),
-            layers.BatchNormalization(),
-            layers.Conv2D(32, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Second convolutional block
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Third convolutional block
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Flatten and dense layers
-            layers.Flatten(),
-            layers.Dense(512, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dropout(0.5),
-            layers.Dense(num_classes, activation="softmax"),
-        ]
-    )
+class DeepCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(256),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.25),
+        )
+        # 32->16->8->4->2; 256 channels -> 256*2*2 = 1024
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(256 * 2 * 2, 1024), nn.ReLU(), nn.BatchNorm1d(1024),
+            nn.Dropout(0.5),
+            nn.Linear(1024, 512), nn.ReLU(), nn.BatchNorm1d(512),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes),
+        )
 
-    # Compile model
-    model.compile(
-        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
-    )
-
-    return model
+    def forward(self, x):
+        return self.classifier(self.features(x))
 
 
 def create_deep_cnn(input_shape=(32, 32, 3), num_classes=10):
-    """
-    Create a deeper CNN architecture for better performance.
+    return DeepCNN(num_classes=num_classes)
 
-    Args:
-        input_shape (tuple): Input image dimensions (height, width, channels)
-        num_classes (int): Number of output classes
 
-    Returns:
-        keras.Model: Compiled CNN model
-    """
-    keras, layers = _keras()
-    model = keras.Sequential(
-        [
-            # First convolutional block
-            layers.Conv2D(32, (3, 3), activation="relu", input_shape=input_shape),
-            layers.BatchNormalization(),
-            layers.Conv2D(32, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Second convolutional block
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Third convolutional block
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Fourth convolutional block
-            layers.Conv2D(256, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(256, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.25),
-            # Flatten and dense layers
-            layers.Flatten(),
-            layers.Dense(1024, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dropout(0.5),
-            layers.Dense(512, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dropout(0.5),
-            layers.Dense(num_classes, activation="softmax"),
-        ]
-    )
+class EfficientCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 256), nn.ReLU(), nn.BatchNorm1d(256),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes),
+        )
 
-    # Compile model
-    model.compile(
-        optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
-    )
-
-    return model
+    def forward(self, x):
+        return self.classifier(self.features(x))
 
 
 def create_efficient_cnn(input_shape=(32, 32, 3), num_classes=10):
-    """
-    Create a more efficient CNN architecture optimized for smaller datasets.
+    return EfficientCNN(num_classes=num_classes)
 
-    Args:
-        input_shape (tuple): Input image dimensions (height, width, channels)
-        num_classes (int): Number of output classes
 
-    Returns:
-        keras.Model: Compiled CNN model
-    """
-    keras, layers = _keras()
-    model = keras.Sequential(
-        [
-            # First convolutional block
-            layers.Conv2D(32, (3, 3), activation="relu", input_shape=input_shape),
-            layers.BatchNormalization(),
-            layers.Conv2D(32, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Second convolutional block
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Third convolutional block
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Flatten and dense layers
-            layers.Flatten(),
-            layers.Dense(256, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dropout(0.3),
-            layers.Dense(num_classes, activation="softmax"),
-        ]
-    )
+class CNNWithRegularization(nn.Module):
+    def __init__(self, num_classes=10, dropout_rate=0.3):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(dropout_rate),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(dropout_rate),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(dropout_rate),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 4 * 4, 512), nn.ReLU(), nn.BatchNorm1d(512),
+            nn.Dropout(dropout_rate * 2),
+            nn.Linear(512, num_classes),
+        )
 
-    # Compile model with a more conservative learning rate
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    return model
+    def forward(self, x):
+        return self.classifier(self.features(x))
 
 
 def create_cnn_with_regularization(
     input_shape=(32, 32, 3), num_classes=10, dropout_rate=0.3, weight_decay=1e-4
 ):
-    """
-    Create CNN with enhanced regularization techniques.
+    # weight_decay is NOT stored on the model.
+    # Pass it to the optimizer: torch.optim.Adam(model.parameters(), weight_decay=wd)
+    return CNNWithRegularization(num_classes=num_classes, dropout_rate=dropout_rate)
 
-    Args:
-        input_shape (tuple): Input image dimensions (height, width, channels)
-        num_classes (int): Number of output classes
-        dropout_rate (float): Dropout rate for regularization
-        weight_decay (float): L2 regularization strength
 
-    Returns:
-        keras.Model: Compiled CNN model with regularization
-    """
-    keras, layers = _keras()
-    # Using Keras functional API for more complex architectures
-    inputs = keras.Input(shape=input_shape)
+class FewShotCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(32),
+            nn.Conv2d(32, 32, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(64),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(), nn.BatchNorm2d(128),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2), nn.Dropout2d(0.2),
+        )
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128, 512), nn.ReLU(), nn.BatchNorm1d(512),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_classes),
+        )
 
-    # First conv block
-    x = layers.Conv2D(
-        32,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Conv2D(
-        32,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(x)
-    x = layers.MaxPooling2D((2, 2))(x)
-    x = layers.Dropout(dropout_rate)(x)
-
-    # Second conv block
-    x = layers.Conv2D(
-        64,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Conv2D(
-        64,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(x)
-    x = layers.MaxPooling2D((2, 2))(x)
-    x = layers.Dropout(dropout_rate)(x)
-
-    # Third conv block
-    x = layers.Conv2D(
-        128,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Conv2D(
-        128,
-        (3, 3),
-        activation="relu",
-        kernel_regularizer=keras.regularizers.l2(weight_decay),
-        padding="same",
-    )(x)
-    x = layers.MaxPooling2D((2, 2))(x)
-    x = layers.Dropout(dropout_rate)(x)
-
-    # Dense layers
-    x = layers.Flatten()(x)
-    x = layers.Dense(
-        512, activation="relu", kernel_regularizer=keras.regularizers.l2(weight_decay)
-    )(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(dropout_rate * 2)(x)
-    outputs = layers.Dense(num_classes, activation="softmax")(x)
-
-    model = keras.Model(inputs, outputs)
-
-    # Compile with appropriate optimizer
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.001),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    return model
+    def forward(self, x):
+        return self.classifier(self.pool(self.features(x)))
 
 
 def create_few_shot_cnn(input_shape=(32, 32, 3), num_classes=10):
-    """
-    Create a specialized CNN architecture optimized for few-shot learning.
-
-    Args:
-        input_shape (tuple): Input image dimensions (height, width, channels)
-        num_classes (int): Number of output classes
-
-    Returns:
-        keras.Model: Compiled CNN model optimized for few-shot learning
-    """
-    keras, layers = _keras()
-    # This architecture emphasizes feature extraction capabilities for few-shot scenarios
-    model = keras.Sequential(
-        [
-            # Feature extraction layers - more robust to few samples
-            layers.Conv2D(32, (3, 3), activation="relu", input_shape=input_shape),
-            layers.BatchNormalization(),
-            layers.Conv2D(32, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Deeper feature extraction
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(64, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Even deeper feature extraction
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.BatchNormalization(),
-            layers.Conv2D(128, (3, 3), activation="relu"),
-            layers.MaxPooling2D((2, 2)),
-            layers.Dropout(0.2),
-            # Global average pooling for better few-shot performance
-            layers.GlobalAveragePooling2D(),
-            # Dense layers with batch normalization for stability
-            layers.Dense(512, activation="relu"),
-            layers.BatchNormalization(),
-            layers.Dropout(0.3),
-            layers.Dense(num_classes, activation="softmax"),
-        ]
-    )
-
-    # Use a more stable optimizer for few-shot learning
-    model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.0005),
-        loss="categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-
-    return model
+    return FewShotCNN(num_classes=num_classes)
 
 
 def get_model_summary(model, model_name="Model"):
-    """
-    Print a summary of the model architecture.
-
-    Args:
-        model (keras.Model): The compiled Keras model
-        model_name (str): Name of the model for display
-    """
     print(f"\n{model_name} Architecture Summary:")
     print("=" * 50)
-    model.summary()
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    print("CNN Model Architecture Module loaded successfully")
-
-    # Test creating different model architectures
     try:
-        baseline_model = create_baseline_cnn()
-        print("✓ Baseline CNN model created successfully")
-
-        deep_model = create_deep_cnn()
-        print("✓ Deep CNN model created successfully")
-
-        efficient_model = create_efficient_cnn()
-        print("✓ Efficient CNN model created successfully")
-
-        regularized_model = create_cnn_with_regularization()
-        print("✓ Regularized CNN model created successfully")
-
-        few_shot_model = create_few_shot_cnn()
-        print("✓ Few-shot CNN model created successfully")
-
-    except Exception as e:
-        print(f"Error creating models: {e}")
-
-    print("\nAvailable model creation functions:")
-    print("- create_baseline_cnn()")
-    print("- create_deep_cnn()")
-    print("- create_efficient_cnn()")
-    print("- create_cnn_with_regularization()")
-    print("- create_few_shot_cnn()")
+        import torchinfo
+        torchinfo.summary(model, input_size=(1, 3, 32, 32))
+    except ImportError:
+        print(model)
