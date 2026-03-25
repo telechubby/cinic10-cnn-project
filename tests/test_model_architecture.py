@@ -53,3 +53,16 @@ def test_create_cnn_with_regularization_accepts_args():
     from model_architecture import create_cnn_with_regularization
     out = _forward(create_cnn_with_regularization(dropout_rate=0.1, weight_decay=1e-3))
     assert out.shape == (1, 10)
+
+
+def test_no_nan_in_output():
+    from model_architecture import create_baseline_cnn
+    import torch
+    torch.manual_seed(0)
+    model = create_baseline_cnn()
+    model.train(mode=False)
+    with torch.no_grad():
+        x = torch.randn(2, 3, 32, 32)
+        out = model(x)
+    assert not torch.isnan(out).any(), "NaN detected in model output"
+    assert not torch.isinf(out).any(), "Inf detected in model output"
