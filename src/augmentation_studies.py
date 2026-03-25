@@ -14,14 +14,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from PIL import Image
-from tensorflow import keras
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 # Set random seeds for reproducibility
 np.random.seed(42)
-import tensorflow as tf
-
-tf.random.set_seed(42)
 
 # CINIC-10 class labels
 CINIC_CLASSES = [
@@ -38,6 +33,56 @@ CINIC_CLASSES = [
 ]
 
 
+class CutoutLayer:
+    """
+    Keras layer applying Cutout augmentation during training.
+    Zeros out a random square patch of each image in the batch.
+    Passthrough at inference time.
+    """
+
+    def __init__(self, mask_size=8, **kwargs):
+        self.mask_size = mask_size
+        self.kwargs = kwargs
+
+    def call(self, inputs, training=None):
+        import tensorflow as tf
+        if not training:
+            return inputs
+
+        images = inputs
+        batch_size = tf.shape(images)[0]
+        h = tf.shape(images)[1]
+        w = tf.shape(images)[2]
+        half = self.mask_size // 2
+
+        def apply_cutout(img):
+            cx = tf.random.uniform((), 0, w, dtype=tf.int32)
+            cy = tf.random.uniform((), 0, h, dtype=tf.int32)
+            x1 = tf.maximum(0, cx - half)
+            x2 = tf.minimum(w, cx + half)
+            y1 = tf.maximum(0, cy - half)
+            y2 = tf.minimum(h, cy + half)
+
+            # Build binary mask (1 = keep, 0 = zero out)
+            rows = tf.range(h)
+            cols = tf.range(w)
+            row_mask = tf.logical_or(rows < y1, rows >= y2)
+            col_mask = tf.logical_or(cols < x1, cols >= x2)
+            mask_2d = tf.logical_or(
+                tf.reshape(row_mask, [-1, 1]),
+                tf.reshape(col_mask, [1, -1])
+            )
+            mask_3d = tf.cast(tf.expand_dims(mask_2d, -1), img.dtype)
+            return img * mask_3d
+
+        return tf.map_fn(apply_cutout, images)
+
+    def get_config(self):
+        config = {"mask_size": self.mask_size}
+        config.update(self.kwargs)
+        return config
+
+
 def create_standard_augmentation_generators():
     """
     Create ImageDataGenerator instances with different standard augmentation techniques.
@@ -45,6 +90,8 @@ def create_standard_augmentation_generators():
     Returns:
         dict: Dictionary containing different augmentation configurations
     """
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
     # Standard augmentation with rotation, shifting, and flipping
     standard_aug = ImageDataGenerator(
         rescale=1.0 / 255,
@@ -55,7 +102,6 @@ def create_standard_augmentation_generators():
         zoom_range=0.1,
         horizontal_flip=True,
         fill_mode="nearest",
-        validation_split=0.2,  # For creating validation splits
     )
 
     # Augmentation with color jittering (more aggressive)
@@ -69,12 +115,10 @@ def create_standard_augmentation_generators():
         horizontal_flip=True,
         fill_mode="nearest",
         brightness_range=[0.8, 1.2],
-        contrast_range=[0.8, 1.2],
-        validation_split=0.2,
     )
 
     # Minimal augmentation (only rescaling)
-    minimal_aug = ImageDataGenerator(rescale=1.0 / 255, validation_split=0.2)
+    minimal_aug = ImageDataGenerator(rescale=1.0 / 255)
 
     # Crop and resize augmentation
     crop_aug = ImageDataGenerator(
@@ -86,7 +130,6 @@ def create_standard_augmentation_generators():
         zoom_range=0.05,
         horizontal_flip=True,
         fill_mode="nearest",
-        validation_split=0.2,
     )
 
     return {
@@ -104,18 +147,10 @@ def create_advanced_augmentation_generators():
     Returns:
         dict: Dictionary containing different advanced augmentation configurations
     """
-    # Cutout augmentation (simulated)
-    cutout_aug = ImageDataGenerator(
-        rescale=1.0 / 255,
-        rotation_range=15,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        shear_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=True,
-        fill_mode="nearest",
-        validation_split=0.2,
-    )
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+    # Cutout augmentation (placeholder - will be replaced with actual CutoutLayer)
+    cutout_aug = None
 
     # Mixup augmentation (simulated)
     mixup_aug = ImageDataGenerator(
@@ -127,7 +162,6 @@ def create_advanced_augmentation_generators():
         zoom_range=0.05,
         horizontal_flip=True,
         fill_mode="nearest",
-        validation_split=0.2,
     )
 
     # AutoAugment-like augmentation (simplified)
@@ -140,7 +174,6 @@ def create_advanced_augmentation_generators():
         zoom_range=0.15,
         horizontal_flip=True,
         fill_mode="nearest",
-        validation_split=0.2,
     )
 
     return {
@@ -220,73 +253,105 @@ def apply_cutmix_augmentation(image1, image2, alpha=1.0):
     return mixed_image
 
 
+def create_cutout_tf_dataset(train_dir, batch_size=32, mask_size=8):
+    """
+    Build a tf.data.Dataset pipeline with CutoutLayer augmentation.
+
+    Args:
+        train_dir (str): Path to training data directory (class subdirs)
+        batch_size (int): Batch size
+        mask_size (int): Cutout mask size in pixels
+
+    Returns:
+        tf.data.Dataset: Batched dataset with cutout applied during training
+    """
+    import tensorflow as tf
+
+    dataset = tf.keras.utils.image_dataset_from_directory(
+        train_dir,
+        image_size=(32, 32),
+        batch_size=batch_size,
+        label_mode="categorical",
+        shuffle=True,
+    )
+    cutout = CutoutLayer(mask_size=mask_size)
+    normalize = tf.keras.layers.Rescaling(1.0 / 255)
+
+    dataset = dataset.map(
+        lambda x, y: (cutout(normalize(x), training=True), y),
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
+    return dataset.prefetch(tf.data.AUTOTUNE)
+
+
 def evaluate_augmentation_effects(
-    model_func, train_generator, validation_generator, augmentation_configs, epochs=5
+    model_func, train_dir, val_dir, augmentation_configs, epochs=5, batch_size=32
 ):
     """
     Evaluate the impact of different augmentation techniques on model performance.
 
     Args:
         model_func: Function to create the CNN model
-        train_generator: Training data generator
-        validation_generator: Validation data generator
-        augmentation_configs (dict): Dictionary of augmentation configurations
-        epochs (int): Number of epochs to train for each configuration
+        train_dir (str): Path to training data directory (class subdirs)
+        val_dir (str): Path to validation data directory (class subdirs)
+        augmentation_configs (dict): Maps name -> ImageDataGenerator instance OR tf.data.Dataset
+        epochs (int): Number of epochs per configuration
+        batch_size (int): Batch size for ImageDataGenerator-based configs
 
     Returns:
-        dict: Results of augmentation evaluation
+        list: Dicts with augmentation, train_accuracy, val_accuracy, train_loss, val_loss
     """
+    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
     results = []
 
+    val_datagen = ImageDataGenerator(rescale=1.0 / 255)
+    val_gen = val_datagen.flow_from_directory(
+        val_dir, target_size=(32, 32), batch_size=batch_size,
+        class_mode="categorical", shuffle=False
+    )
+
     for aug_name, aug_config in augmentation_configs.items():
+        if aug_config is None:
+            continue  # skip placeholder entries
         print(f"Evaluating {aug_name} augmentation...")
 
         try:
-            # Create model
             model = model_func()
-
-            # Compile model
             model.compile(
                 optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
             )
 
-            # Train model with specific augmentation
-            history = model.fit(
-                train_generator,
-                epochs=epochs,
-                validation_data=validation_generator,
-                verbose=0,
-            )
+            if isinstance(aug_config, ImageDataGenerator):
+                train_gen = aug_config.flow_from_directory(
+                    train_dir, target_size=(32, 32), batch_size=batch_size,
+                    class_mode="categorical", shuffle=True
+                )
+                history = model.fit(
+                    train_gen, epochs=epochs, validation_data=val_gen, verbose=0
+                )
+            else:
+                # tf.data.Dataset (e.g. cutout pipeline)
+                history = model.fit(
+                    aug_config, epochs=epochs, validation_data=val_gen, verbose=0
+                )
 
-            # Extract final metrics
-            train_acc = history.history["accuracy"][-1]
-            val_acc = history.history["val_accuracy"][-1]
-            train_loss = history.history["loss"][-1]
-            val_loss = history.history["val_loss"][-1]
-
-            results.append(
-                {
-                    "augmentation": aug_name,
-                    "train_accuracy": train_acc,
-                    "val_accuracy": val_acc,
-                    "train_loss": train_loss,
-                    "val_loss": val_loss,
-                    "epochs": epochs,
-                }
-            )
+            results.append({
+                "augmentation": aug_name,
+                "train_accuracy": history.history["accuracy"][-1],
+                "val_accuracy": history.history["val_accuracy"][-1],
+                "train_loss": history.history["loss"][-1],
+                "val_loss": history.history["val_loss"][-1],
+                "epochs": epochs,
+            })
 
         except Exception as e:
-            print(f"Error with {aug_name} augmentation: {e}")
-            results.append(
-                {
-                    "augmentation": aug_name,
-                    "train_accuracy": 0.0,
-                    "val_accuracy": 0.0,
-                    "train_loss": 0.0,
-                    "val_loss": 0.0,
-                    "epochs": epochs,
-                }
-            )
+            print(f"Error with {aug_name}: {e}")
+            results.append({
+                "augmentation": aug_name,
+                "train_accuracy": 0.0, "val_accuracy": 0.0,
+                "train_loss": 0.0, "val_loss": 0.0, "epochs": epochs,
+            })
 
     return results
 
@@ -366,43 +431,40 @@ def save_augmentation_results(results, filename_prefix="augmentation_analysis"):
     return df
 
 
-def compare_augmentation_approaches(model_func, train_generator, validation_generator):
+def compare_augmentation_approaches(model_func, train_dir, val_dir, epochs=5, batch_size=32):
     """
     Perform comprehensive comparison of standard and advanced augmentation techniques.
 
     Args:
         model_func: Function to create the CNN model
-        train_generator: Training data generator
-        validation_generator: Validation data generator
+        train_dir (str): Path to training data (class subdirs)
+        val_dir (str): Path to validation data (class subdirs)
+        epochs (int): Training epochs per augmentation config
+        batch_size (int): Batch size
 
     Returns:
-        dict: All augmentation analysis results
+        dict: {"standard": [...], "advanced": [...]}
     """
     print("Starting comprehensive augmentation analysis...")
 
-    # 1. Standard Augmentation Analysis
     print("\n1. Analyzing standard augmentation techniques...")
     standard_augs = create_standard_augmentation_generators()
     standard_results = evaluate_augmentation_effects(
-        model_func, train_generator, validation_generator, standard_augs, epochs=5
+        model_func, train_dir, val_dir, standard_augs,
+        epochs=epochs, batch_size=batch_size
     )
 
-    # 2. Advanced Augmentation Analysis
     print("\n2. Analyzing advanced augmentation techniques...")
     advanced_augs = create_advanced_augmentation_generators()
+    # Replace placeholder cutout entry with real tf.data pipeline
+    advanced_augs["cutout"] = create_cutout_tf_dataset(train_dir, batch_size=batch_size)
     advanced_results = evaluate_augmentation_effects(
-        model_func, train_generator, validation_generator, advanced_augs, epochs=5
+        model_func, train_dir, val_dir, advanced_augs,
+        epochs=epochs, batch_size=batch_size
     )
 
-    # Combine all results for comprehensive analysis
-    all_results = {
-        "standard": standard_results,
-        "advanced": advanced_results,
-    }
-
     print("\nAugmentation analysis completed successfully!")
-
-    return all_results
+    return {"standard": standard_results, "advanced": advanced_results}
 
 
 # Example usage and testing
