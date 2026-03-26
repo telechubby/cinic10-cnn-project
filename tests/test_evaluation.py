@@ -62,3 +62,37 @@ def test_plot_reduced_dataset_results_runs():
         {"fraction": 1.0, "val_accuracy": 0.82, "val_loss": 0.6, "num_train_samples": 1000},
     ]
     plot_reduced_dataset_results(results)
+
+
+def test_calculate_performance_metrics_with_mock_model():
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from evaluation import calculate_performance_metrics
+
+    model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10))
+    X = torch.randn(8, 3, 32, 32)
+    y = torch.randint(0, 10, (8,))
+    loader = DataLoader(TensorDataset(X, y), batch_size=4)
+    metrics = calculate_performance_metrics(model, loader)
+    assert "test_accuracy" in metrics
+    assert "test_loss" in metrics
+    assert 0.0 <= metrics["test_accuracy"] <= 1.0
+
+
+def test_generate_confusion_matrix_shape():
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from evaluation import generate_confusion_matrix
+
+    model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10))
+    X = torch.randn(20, 3, 32, 32)
+    y = torch.randint(0, 10, (20,))
+    loader = DataLoader(TensorDataset(X, y), batch_size=4)
+    cm = generate_confusion_matrix(model, loader)
+    assert cm.shape == (10, 10)

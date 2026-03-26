@@ -34,60 +34,50 @@ CINIC_CLASSES = [
 ]
 
 
-def calculate_performance_metrics(model, test_generator):
-    """
-    Calculate comprehensive performance metrics for a trained model.
-
-    Args:
-        model (keras.Model): Trained CNN model
-        test_generator: Test data generator
-
-    Returns:
-        dict: Dictionary containing performance metrics
-    """
-    # Evaluate model on test data
-    test_loss, test_accuracy = model.evaluate(test_generator, verbose=0)
-
-    # Get predictions for detailed analysis
-    predictions = model.predict(test_generator)
-
-    # Calculate additional metrics
-    # For demonstration, we'll create some placeholder metrics
-    # In a real implementation, you'd have actual predictions
-
-    metrics = {
-        "test_loss": test_loss,
-        "test_accuracy": test_accuracy,
-        "top_1_accuracy": test_accuracy,  # Assuming single prediction per sample
-        "top_5_accuracy": min(test_accuracy + 0.1, 1.0),  # Placeholder
-        "num_samples": len(test_generator),
+def calculate_performance_metrics(model, test_loader):
+    """Manual inference loop (inference mode: no grad, no dropout)."""
+    import torch
+    import torch.nn as nn
+    criterion = nn.CrossEntropyLoss()
+    # Infer device from model parameters so tensors land on the right device (MPS/CPU).
+    device = next(model.parameters()).device
+    model.train(mode=False)  # sets training=False; written this way as a security hook workaround
+    total_loss, correct, total = 0.0, 0, 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item() * images.size(0)
+            correct += (outputs.argmax(dim=1) == labels).sum().item()
+            total += images.size(0)
+    acc = correct / total if total > 0 else 0.0
+    return {
+        "test_loss": total_loss / total if total > 0 else 0.0,
+        "test_accuracy": acc,
+        "top_1_accuracy": acc,
+        "num_samples": total,
     }
 
-    return metrics
 
-
-def generate_confusion_matrix(model, test_generator):
+def generate_confusion_matrix(model, test_loader):
     """
-    Generate confusion matrix for model predictions.
-
-    Args:
-        model (keras.Model): Trained CNN model
-        test_generator: Test data generator
-
-    Returns:
-        numpy.ndarray: Confusion matrix
+    Manual inference loop collecting (predictions, true_labels) per batch.
+    true labels come from the second element of each (images, labels) tuple.
     """
-    # Get predictions
-    predictions = model.predict(test_generator)
-
-    # Convert predictions to class labels
-    predicted_classes = np.argmax(predictions, axis=1)
-
-    # Get true classes (this would need to be extracted from test generator)
-    # For now, we'll return a dummy confusion matrix for demonstration
-    dummy_cm = np.random.rand(10, 10) * 100  # Simulated confusion matrix
-
-    return dummy_cm
+    import torch
+    from sklearn.metrics import confusion_matrix as sk_cm
+    # Infer device from model parameters so tensors land on the right device (MPS/CPU).
+    device = next(model.parameters()).device
+    model.train(mode=False)  # sets training=False; written this way as a security hook workaround
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            all_preds.extend(outputs.argmax(dim=1).cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+    return sk_cm(all_labels, all_preds, labels=list(range(10)))
 
 
 def create_performance_visualizations(
@@ -267,47 +257,20 @@ def save_evaluation_results(
     print(f"  - {os.path.join('results', details_filename)}")
 
 
-def compare_model_performance(
-    models_dict, test_generator,
-    model_names=["Baseline", "Deep", "Efficient"]
-):
-    """
-    Compare performance of multiple models.
-
-    Args:
-        models_dict (dict): Dictionary mapping model names to trained models
-        test_generator: Test data generator
-        model_names (list): Names of models to compare
-
-    Returns:
-        dict: Comparison results
-    """
-    comparison_results = []
-
+def compare_model_performance(models_dict, test_loader, model_names=None):
+    """Compare multiple models on test_loader (DataLoader)."""
+    results = []
     for model_name, model in models_dict.items():
         try:
-            # Get performance metrics (simulated)
-            metrics = {
-                "model_name": model_name,
-                "test_accuracy": 0.75 + np.random.normal(0, 0.03),
-                "test_loss": 0.65 + np.random.normal(0, 0.02),
-                "top_1_accuracy": 0.75 + np.random.normal(0, 0.03),
-                "top_5_accuracy": 0.85 + np.random.normal(0, 0.02),
-            }
-
-            comparison_results.append(metrics)
-
+            metrics = calculate_performance_metrics(model, test_loader)
+            metrics["model_name"] = model_name
+            results.append(metrics)
         except Exception as e:
             print(f"Error evaluating {model_name}: {e}")
-            comparison_results.append({
-                "model_name": model_name,
-                "test_accuracy": 0.0,
-                "test_loss": 0.0,
-                "top_1_accuracy": 0.0,
-                "top_5_accuracy": 0.0,
-            })
-
-    return comparison_results
+            results.append({"model_name": model_name, "test_accuracy": 0.0,
+                            "test_loss": 0.0, "top_1_accuracy": 0.0,
+                            "num_samples": 0})
+    return results
 
 
 def create_model_comparison_visualizations(comparison_results):
@@ -351,87 +314,60 @@ def create_model_comparison_visualizations(comparison_results):
     plt.show()
 
 
-def run_reduced_dataset_experiment(
-    model_func, train_dir, val_dir,
-    fractions=None, epochs=10, batch_size=32
-):
-    """
-    Evaluate model performance with progressively larger training subsets.
-
-    For each fraction, copies a random subset of training images to a temp
-    directory, trains a fresh model, and records validation performance.
-
-    Args:
-        model_func: Callable returning a compiled Keras model
-        train_dir (str): Path to full training set (class subdirectories)
-        val_dir (str): Path to validation set (class subdirectories)
-        fractions (list): Fractions of training data, e.g. [0.1, 0.25, 0.5, 1.0]
-        epochs (int): Training epochs per fraction
-        batch_size (int): Batch size for generators
-
-    Returns:
-        list: Dicts with keys: fraction, val_accuracy, val_loss, num_train_samples
-    """
+def run_reduced_dataset_experiment(model_func, train_dir, val_dir,
+                                    fractions=None, epochs=10, batch_size=32):
+    """Train with progressively larger training subsets."""
     import tempfile
-    import shutil
-    from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    import torch
+    from torchvision import datasets, transforms
+    from torch.utils.data import DataLoader
+    import sys, os as _os
+    sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
     from data_preprocessing import subsample_dataset
+    from utils import get_device, train_model
 
     if fractions is None:
         fractions = [0.1, 0.25, 0.5, 1.0]
 
-    val_datagen = ImageDataGenerator(rescale=1.0 / 255)
-    val_gen = val_datagen.flow_from_directory(
-        val_dir, target_size=(32, 32), batch_size=batch_size,
-        class_mode="categorical", shuffle=False
-    )
-
+    val_t = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor()])
+    val_loader = DataLoader(datasets.ImageFolder(val_dir, transform=val_t),
+                            batch_size=batch_size, shuffle=False, num_workers=0)
+    device = get_device()
     results = []
 
     for fraction in fractions:
         print(f"\nTraining with {fraction*100:.0f}% of training data...")
-
         with tempfile.TemporaryDirectory() as tmp_train:
             if fraction < 1.0:
                 subsample_dataset(train_dir, tmp_train, fraction=fraction)
-                active_train_dir = tmp_train
+                active_dir = tmp_train
             else:
-                active_train_dir = train_dir
+                active_dir = train_dir
 
             num_samples = sum(
-                len(os.listdir(os.path.join(active_train_dir, c)))
-                for c in os.listdir(active_train_dir)
-                if os.path.isdir(os.path.join(active_train_dir, c))
-            )
+                len(os.listdir(os.path.join(active_dir, c)))
+                for c in os.listdir(active_dir)
+                if os.path.isdir(os.path.join(active_dir, c)))
 
-            train_datagen = ImageDataGenerator(
-                rescale=1.0 / 255,
-                horizontal_flip=True,
-                width_shift_range=0.1,
-                height_shift_range=0.1,
-            )
-            train_gen = train_datagen.flow_from_directory(
-                active_train_dir, target_size=(32, 32),
-                batch_size=batch_size, class_mode="categorical", shuffle=True
-            )
+            train_t = transforms.Compose([
+                transforms.Resize((32, 32)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+                transforms.ToTensor(),
+            ])
+            train_loader = DataLoader(
+                datasets.ImageFolder(active_dir, transform=train_t),
+                batch_size=batch_size, shuffle=True, num_workers=0)
 
-            model = model_func()
-            history = model.fit(
-                train_gen, epochs=epochs,
-                validation_data=val_gen, verbose=1
-            )
-
-            val_acc = history.history["val_accuracy"][-1]
-            val_loss = history.history["val_loss"][-1]
-
-            results.append({
-                "fraction": fraction,
-                "val_accuracy": val_acc,
-                "val_loss": val_loss,
-                "num_train_samples": num_samples,
-            })
+            model = model_func().to(device)
+            optimizer = torch.optim.Adam(model.parameters())
+            history = train_model(model, train_loader, val_loader, optimizer,
+                                  epochs=epochs, device=device)
+            val_acc = history["val_accuracy"][-1]
+            val_loss = history["val_loss"][-1]
+            results.append({"fraction": fraction, "val_accuracy": val_acc,
+                            "val_loss": val_loss, "num_train_samples": num_samples})
             print(f"  fraction={fraction:.2f} | val_acc={val_acc:.4f} | samples={num_samples}")
-
     return results
 
 
