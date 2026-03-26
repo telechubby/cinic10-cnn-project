@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import cross_val_score
 
 # Set random seeds for reproducibility
 np.random.seed(42)
@@ -40,7 +38,10 @@ def calculate_performance_metrics(model, test_loader):
     import torch.nn as nn
     criterion = nn.CrossEntropyLoss()
     # Infer device from model parameters so tensors land on the right device (MPS/CPU).
-    device = next(model.parameters()).device
+    try:
+        device = next(model.parameters()).device
+    except StopIteration:
+        device = torch.device("cpu")
     model.train(mode=False)  # sets training=False; written this way as a security hook workaround
     total_loss, correct, total = 0.0, 0, 0
     with torch.no_grad():
@@ -68,7 +69,10 @@ def generate_confusion_matrix(model, test_loader):
     import torch
     from sklearn.metrics import confusion_matrix as sk_cm
     # Infer device from model parameters so tensors land on the right device (MPS/CPU).
-    device = next(model.parameters()).device
+    try:
+        device = next(model.parameters()).device
+    except StopIteration:
+        device = torch.device("cpu")
     model.train(mode=False)  # sets training=False; written this way as a security hook workaround
     all_preds, all_labels = [], []
     with torch.no_grad():
@@ -304,10 +308,10 @@ def create_model_comparison_visualizations(comparison_results):
     axes[1, 0].set_title("Top-1 Accuracy")
     axes[1, 0].tick_params(axis="x", rotation=45)
 
-    axes[1, 1].bar(df["model_name"], df["top_5_accuracy"], color="lightyellow")
+    axes[1, 1].bar(df["model_name"], df["top_1_accuracy"], color="lightyellow")
     axes[1, 1].set_xlabel("Model")
-    axes[1, 1].set_ylabel("Top-5 Accuracy")
-    axes[1, 1].set_title("Top-5 Accuracy")
+    axes[1, 1].set_ylabel("Top-1 Accuracy")
+    axes[1, 1].set_title("Top-1 Accuracy")
     axes[1, 1].tick_params(axis="x", rotation=45)
 
     plt.tight_layout()
@@ -363,8 +367,8 @@ def run_reduced_dataset_experiment(model_func, train_dir, val_dir,
             optimizer = torch.optim.Adam(model.parameters())
             history = train_model(model, train_loader, val_loader, optimizer,
                                   epochs=epochs, device=device)
-            val_acc = history["val_accuracy"][-1]
-            val_loss = history["val_loss"][-1]
+            val_acc = history["val_accuracy"][-1] if history["val_accuracy"] else 0.0
+            val_loss = history["val_loss"][-1] if history["val_loss"] else 0.0
             results.append({"fraction": fraction, "val_accuracy": val_acc,
                             "val_loss": val_loss, "num_train_samples": num_samples})
             print(f"  fraction={fraction:.2f} | val_acc={val_acc:.4f} | samples={num_samples}")
