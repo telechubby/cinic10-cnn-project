@@ -14,9 +14,6 @@ import seaborn as sns
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
-# Set random seeds for reproducibility
-np.random.seed(42)
-
 # CINIC-10 class labels
 CINIC_CLASSES = [
     "airplane",

@@ -1,4 +1,7 @@
 """Shared PyTorch utilities: device detection, seeds, training loop."""
+import os
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import numpy as np
 import torch
 import torch.nn as nn

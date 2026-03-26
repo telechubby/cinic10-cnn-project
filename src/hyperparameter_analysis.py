@@ -198,12 +198,13 @@ def save_hyperparameter_results(results, filename_prefix="hyperparameter_analysi
 
 def create_comprehensive_hyperparameter_analysis(model_func, train_dir, val_dir):
     print("Starting comprehensive hyperparameter analysis...")
+    from model_architecture import create_cnn_with_regularization
     lr_results = analyze_learning_rates(
         model_func, train_dir, val_dir, [0.0001, 0.001, 0.01, 0.1], epochs=5)
     batch_results = analyze_batch_sizes(
         model_func, train_dir, val_dir, [16, 32, 64], epochs=5)
     reg_results = analyze_regularization_strengths(
-        model_func, train_dir, val_dir,
+        create_cnn_with_regularization, train_dir, val_dir,
         [0.1, 0.2, 0.3, 0.5], [1e-4, 1e-3, 1e-2], epochs=5)
     opt_results = analyze_optimizers(
         model_func, train_dir, val_dir, ["adam", "sgd", "rmsprop"], epochs=5)

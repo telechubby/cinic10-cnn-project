@@ -14,9 +14,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-# Set random seeds for reproducibility
-np.random.seed(42)
-
 # CINIC-10 class labels
 CINIC_CLASSES = [
     "airplane",
