@@ -9,7 +9,9 @@ from tqdm import tqdm
 
 
 def get_device() -> torch.device:
-    """Return MPS device on Apple Silicon, else CPU."""
+    """Return CUDA, MPS (Apple Silicon), or CPU — whichever is available."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
@@ -20,6 +22,8 @@ def set_seeds(seed: int = 42) -> None:
     import random
     random.seed(seed)  # torchvision transforms use random.random() internally
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     if torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)
     np.random.seed(seed)
