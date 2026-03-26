@@ -5,6 +5,7 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 
 def get_device() -> torch.device:
@@ -50,7 +51,13 @@ def train_model(
         # --- Training pass ---
         model.train()
         train_loss, train_correct, train_total = 0.0, 0, 0
-        for images, labels in train_loader:
+        bar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1}/{epochs} [train]",
+            unit="batch",
+            leave=False,
+        )
+        for images, labels in bar:
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
@@ -60,12 +67,17 @@ def train_model(
             train_loss += loss.item() * images.size(0)
             train_correct += (outputs.argmax(dim=1) == labels).sum().item()
             train_total += images.size(0)
+            bar.set_postfix(
+                loss=f"{train_loss / train_total:.4f}",
+                acc=f"{train_correct / train_total:.4f}",
+            )
+        bar.close()
 
         # --- Validation pass (inference mode: no grad, no dropout, BN uses running stats) ---
         model.train(mode=False)  # == model.eval(); written this way as a security hook workaround
         val_loss, val_correct, val_total = 0.0, 0, 0
         with torch.no_grad():
-            for images, labels in val_loader:
+            for images, labels in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{epochs} [val]  ", unit="batch", leave=False):
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
@@ -74,23 +86,37 @@ def train_model(
                 val_total += images.size(0)
         model.train()
 
-        epoch_val_acc = val_correct / val_total if val_total > 0 else 0.0
-        history["loss"].append(train_loss / train_total if train_total > 0 else 0.0)
-        history["accuracy"].append(train_correct / train_total if train_total > 0 else 0.0)
-        history["val_loss"].append(val_loss / val_total if val_total > 0 else 0.0)
+        epoch_train_loss = train_loss / train_total if train_total > 0 else 0.0
+        epoch_train_acc  = train_correct / train_total if train_total > 0 else 0.0
+        epoch_val_loss   = val_loss / val_total if val_total > 0 else 0.0
+        epoch_val_acc    = val_correct / val_total if val_total > 0 else 0.0
+
+        history["loss"].append(epoch_train_loss)
+        history["accuracy"].append(epoch_train_acc)
+        history["val_loss"].append(epoch_val_loss)
         history["val_accuracy"].append(epoch_val_acc)
 
+        best_marker = ""
         if epoch_val_acc > best_val_acc:
             best_val_acc = epoch_val_acc
             best_state = {k: v.clone() for k, v in model.state_dict().items()}
             if checkpoint_path:
                 torch.save(model.state_dict(), checkpoint_path)
             patience_counter = 0
+            best_marker = "  *best*"
         else:
             patience_counter += 1
-            if patience_counter >= patience:
-                print(f"Early stopping at epoch {epoch + 1}/{epochs}")
-                break
+
+        tqdm.write(
+            f"Epoch {epoch + 1:>3}/{epochs}  "
+            f"loss {epoch_train_loss:.4f}  acc {epoch_train_acc:.4f}  "
+            f"val_loss {epoch_val_loss:.4f}  val_acc {epoch_val_acc:.4f}"
+            f"{best_marker}"
+        )
+
+        if patience_counter >= patience:
+            tqdm.write(f"Early stopping at epoch {epoch + 1}/{epochs}")
+            break
 
     if best_state is not None:
         model.load_state_dict(best_state)

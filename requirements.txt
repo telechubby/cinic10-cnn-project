@@ -12,3 +12,4 @@ pillow>=10.0.0
 jupyter>=1.0.0
 notebook>=7.0.0
 torchinfo>=1.8.0   # optional dev dependency: nicer model summaries
+tqdm>=4.66.0
