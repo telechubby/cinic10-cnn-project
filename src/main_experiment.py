@@ -13,13 +13,13 @@ Orchestrates the complete experiment pipeline:
 import os
 import sys
 
-# Add src directory to Python path
 sys.path.append(os.path.dirname(__file__))
 
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import torch
 
 from augmentation_studies import compare_augmentation_approaches
 from data_preprocessing import create_data_generators
@@ -37,9 +37,9 @@ from model_architecture import (
     create_efficient_cnn,
     create_few_shot_cnn,
 )
+from utils import get_device, set_seeds, train_model
 
-# Set random seed for reproducibility
-np.random.seed(42)
+set_seeds(42)
 
 # ── Dataset paths ─────────────────────────────────────────────────────────────
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -77,33 +77,28 @@ def run_baseline_experiment():
     print("RUNNING BASELINE EXPERIMENT")
     print("=" * 60)
 
-    from tensorflow import keras
+    device = get_device()
+    print(f"Using device: {device}")
 
-    train_gen, val_gen = create_data_generators(
+    train_loader, val_loader = create_data_generators(
         TRAIN_DIR, VAL_DIR, batch_size=BATCH_SIZE, augment=False
     )
 
-    baseline_model = create_baseline_cnn()
-    baseline_model.summary()
+    model = create_baseline_cnn().to(device)
+    print(model)
 
-    history = baseline_model.fit(
-        train_gen,
-        epochs=EPOCHS_BASELINE,
-        validation_data=val_gen,
-        callbacks=[
-            keras.callbacks.ModelCheckpoint(
-                os.path.join(MODELS_DIR, "baseline_cnn.keras"),
-                save_best_only=True,
-                monitor="val_accuracy",
-            ),
-            keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
-        ],
-        verbose=1,
+    optimizer = torch.optim.Adam(model.parameters())
+    checkpoint = os.path.join(MODELS_DIR, "baseline_cnn.pt")
+
+    history = train_model(
+        model, train_loader, val_loader, optimizer,
+        epochs=EPOCHS_BASELINE, device=device,
+        patience=5, checkpoint_path=checkpoint,
     )
 
-    final_val_acc = history.history["val_accuracy"][-1]
-    print(f"✓ Baseline final val_acc: {final_val_acc:.4f}")
-    return baseline_model, history
+    final_val_acc = history["val_accuracy"][-1] if history["val_accuracy"] else 0.0
+    print(f"Baseline final val_acc: {final_val_acc:.4f}")
+    return model, history
 
 
 def run_hyperparameter_analysis():
