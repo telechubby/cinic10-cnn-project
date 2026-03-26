@@ -86,11 +86,11 @@ def create_few_shot_classifier(input_shape=(32, 32, 3), num_classes=10):
 class PrototypicalNetwork(nn.Module):
     def __init__(self, num_classes=10, embedding_dim=128):
         super().__init__()
-        self.encoder = _backbone(embedding_dim)
+        self._backbone = _backbone(embedding_dim)
         self.classifier = nn.Linear(embedding_dim, num_classes)
 
     def forward(self, x):
-        return self.classifier(self.encoder(x))
+        return self.classifier(self._backbone(x))
 
 
 def create_prototypical_network(input_shape=(32, 32, 3), num_classes=10,
