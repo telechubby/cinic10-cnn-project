@@ -39,7 +39,14 @@ from model_architecture import (
 )
 from utils import get_device, set_seeds, train_model
 
-set_seeds(42)
+import argparse as _ap, random as _rand
+_parser = _ap.ArgumentParser(add_help=False)
+_parser.add_argument("--seed", type=int, default=None)
+_args, _ = _parser.parse_known_args()
+MASTER_SEED = _args.seed if _args.seed is not None else _rand.randint(10_000, 99_999)
+del _ap, _rand, _parser, _args
+print(f"Master seed: {MASTER_SEED}  (re-run with --seed {MASTER_SEED} to reproduce)")
+set_seeds(MASTER_SEED)
 
 # ── Dataset paths ─────────────────────────────────────────────────────────────
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))

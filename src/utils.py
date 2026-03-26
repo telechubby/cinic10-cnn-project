@@ -26,9 +26,16 @@ def get_device():
     return torch.device("cpu")
 
 
-def set_seeds(seed: int = 42) -> None:
-    """Set all random seeds for reproducibility."""
-    import random
+def set_seeds(seed: int = None) -> None:
+    """Set all random seeds for reproducibility.
+
+    If seed is None, a cryptographically random seed is generated and printed
+    so the run can be reproduced by passing that value explicitly.
+    """
+    import random, secrets
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+        print(f"set_seeds: generated seed = {seed}")
     random.seed(seed)  # torchvision transforms use random.random() internally
     torch.manual_seed(seed)
     if torch.cuda.is_available():
