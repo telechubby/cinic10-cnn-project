@@ -8,10 +8,19 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
-def get_device() -> torch.device:
-    """Return CUDA, MPS (Apple Silicon), or CPU — whichever is available."""
+def get_device():
+    """Return the best available device: CUDA > TPU (XLA) > MPS > CPU.
+
+    Returns a torch.device for CUDA/MPS/CPU, or an XLA device object for TPU.
+    Usage is identical — pass the return value to .to(device) as usual.
+    """
     if torch.cuda.is_available():
         return torch.device("cuda")
+    try:
+        import torch_xla.core.xla_model as xm
+        return xm.xla_device()
+    except ImportError:
+        pass
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
@@ -26,6 +35,11 @@ def set_seeds(seed: int = 42) -> None:
         torch.cuda.manual_seed_all(seed)
     if torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)
+    try:
+        import torch_xla.core.xla_model as xm
+        xm.set_rng_state(seed)
+    except ImportError:
+        pass
     np.random.seed(seed)
 
 
