@@ -66,3 +66,67 @@ def test_no_nan_in_output():
         out = model(x)
     assert not torch.isnan(out).any(), "NaN detected in model output"
     assert not torch.isinf(out).any(), "Inf detected in model output"
+
+
+# ── VGGBaseline tests ─────────────────────────────────────────────────────────
+
+def test_vgg_baseline_output_shape():
+    from model_architecture import create_vgg_baseline
+    assert _forward(create_vgg_baseline()).shape == (1, 10)
+
+
+def test_vgg_baseline_is_nn_module():
+    from model_architecture import create_vgg_baseline
+    assert isinstance(create_vgg_baseline(), nn.Module)
+
+
+def test_vgg_baseline_no_nan():
+    from model_architecture import create_vgg_baseline
+    torch.manual_seed(0)
+    model = create_vgg_baseline()
+    model.train(mode=False)
+    with torch.no_grad():
+        out = model(torch.randn(2, 3, 32, 32))
+    assert not torch.isnan(out).any()
+    assert not torch.isinf(out).any()
+
+
+# ── ResNetDeep tests ──────────────────────────────────────────────────────────
+
+def test_resnet_deep_output_shape():
+    from model_architecture import create_resnet_deep
+    assert _forward(create_resnet_deep()).shape == (1, 10)
+
+
+def test_resnet_deep_is_nn_module():
+    from model_architecture import create_resnet_deep
+    assert isinstance(create_resnet_deep(), nn.Module)
+
+
+def test_resnet_deep_no_nan():
+    from model_architecture import create_resnet_deep
+    torch.manual_seed(0)
+    model = create_resnet_deep()
+    model.train(mode=False)
+    with torch.no_grad():
+        out = model(torch.randn(2, 3, 32, 32))
+    assert not torch.isnan(out).any()
+    assert not torch.isinf(out).any()
+
+
+def test_resnet_deep_residual_skip_shapes():
+    """Verify residual blocks produce correct spatial dimensions."""
+    from model_architecture import ResNetDeep
+    torch.manual_seed(0)
+    model = ResNetDeep()
+    model.train(mode=False)
+    x = torch.randn(1, 3, 32, 32)
+    with torch.no_grad():
+        s  = model.stem(x)         # (1, 64,  32, 32)
+        s1 = model.stage1(s)       # (1, 64,  32, 32)
+        s2 = model.stage2(s1)      # (1, 128, 16, 16)
+        s3 = model.stage3(s2)      # (1, 256,  8,  8)
+    assert s.shape  == (1,  64, 32, 32)
+    assert s1.shape == (1,  64, 32, 32)
+    assert s2.shape == (1, 128, 16, 16)
+    assert s3.shape == (1, 256,  8,  8)

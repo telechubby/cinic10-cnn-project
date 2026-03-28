@@ -19,25 +19,32 @@ CINIC_CLASSES = [
 ]
 
 
-def _make_loaders(train_dir, val_dir, batch_size):
+def _make_loaders(train_dir, val_dir, batch_size, data_fraction=1.0):
     from torchvision import datasets, transforms
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, Subset
     t = transforms.Compose([transforms.Resize((32, 32)), transforms.ToTensor()])
+    train_ds = datasets.ImageFolder(train_dir, transform=t)
+    if data_fraction < 1.0:
+        import random
+        n = max(1, int(len(train_ds) * data_fraction))
+        train_ds = Subset(train_ds, random.sample(range(len(train_ds)), n))
     return (
-        DataLoader(datasets.ImageFolder(train_dir, transform=t),
-                   batch_size=batch_size, shuffle=True, num_workers=0),
+        DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                   num_workers=4, persistent_workers=True),
         DataLoader(datasets.ImageFolder(val_dir, transform=t),
-                   batch_size=batch_size, shuffle=False, num_workers=0),
+                   batch_size=batch_size, shuffle=False,
+                   num_workers=4, persistent_workers=True),
     )
 
 
 def analyze_learning_rates(model_func, train_dir, val_dir,
-                            learning_rates=None, epochs=10, batch_size=32):
+                            learning_rates=None, epochs=10, batch_size=32,
+                            data_fraction=1.0):
     if learning_rates is None:
         learning_rates = [0.0001, 0.001, 0.01, 0.1]
     device = get_device()
     train_model = _train_model_fn
-    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
+    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size, data_fraction)
     results = []
     for lr in learning_rates:
         print(f"Testing learning rate: {lr}")
@@ -60,7 +67,7 @@ def analyze_learning_rates(model_func, train_dir, val_dir,
 
 
 def analyze_batch_sizes(model_func, train_dir, val_dir,
-                         batch_sizes=None, epochs=10):
+                         batch_sizes=None, epochs=10, data_fraction=1.0):
     if batch_sizes is None:
         batch_sizes = [32, 64, 128]
     device = get_device()
@@ -68,7 +75,7 @@ def analyze_batch_sizes(model_func, train_dir, val_dir,
     results = []
     for bs in batch_sizes:
         print(f"Testing batch size: {bs}")
-        train_loader, val_loader = _make_loaders(train_dir, val_dir, bs)
+        train_loader, val_loader = _make_loaders(train_dir, val_dir, bs, data_fraction)
         model = model_func().to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         history = train_model(model, train_loader, val_loader, optimizer,
@@ -89,14 +96,14 @@ def analyze_batch_sizes(model_func, train_dir, val_dir,
 
 def analyze_regularization_strengths(model_func, train_dir, val_dir,
                                        dropout_rates=None, weight_decays=None,
-                                       epochs=10, batch_size=32):
+                                       epochs=10, batch_size=32, data_fraction=1.0):
     if dropout_rates is None:
         dropout_rates = [0.2, 0.3, 0.5]
     if weight_decays is None:
         weight_decays = [1e-4, 1e-3, 1e-2]
     device = get_device()
     train_model = _train_model_fn
-    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
+    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size, data_fraction)
     results = []
     for dr in dropout_rates:
         for wd in weight_decays:
@@ -129,12 +136,12 @@ def analyze_regularization_strengths(model_func, train_dir, val_dir,
 
 
 def analyze_optimizers(model_func, train_dir, val_dir,
-                        optimizers=None, epochs=10, batch_size=32):
+                        optimizers=None, epochs=10, batch_size=32, data_fraction=1.0):
     if optimizers is None:
         optimizers = ["adam", "sgd", "rmsprop"]
     device = get_device()
     train_model = _train_model_fn
-    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size)
+    train_loader, val_loader = _make_loaders(train_dir, val_dir, batch_size, data_fraction)
     results = []
     for opt_name in optimizers:
         print(f"Testing optimizer: {opt_name}")
@@ -196,18 +203,30 @@ def save_hyperparameter_results(results, filename_prefix="hyperparameter_analysi
     return df
 
 
-def create_comprehensive_hyperparameter_analysis(model_func, train_dir, val_dir):
-    print("Starting comprehensive hyperparameter analysis...")
+def create_comprehensive_hyperparameter_analysis(model_func, train_dir, val_dir,
+                                                   epochs=3, data_fraction=0.25):
+    """Run 4 one-at-a-time HP sweeps and return results dict.
+
+    Args:
+        epochs: epochs per config (default 3 — enough to rank configs, much faster than 5).
+        data_fraction: fraction of training data to use (default 0.25 — preserves relative
+                       orderings, 4× faster; set to 1.0 for full-data sweep).
+    """
+    print(f"Starting HP analysis (epochs={epochs}, data_fraction={data_fraction})…")
     from model_architecture import create_cnn_with_regularization
     lr_results = analyze_learning_rates(
-        model_func, train_dir, val_dir, [0.0001, 0.001, 0.01, 0.1], epochs=5)
+        model_func, train_dir, val_dir, [0.0001, 0.001, 0.01, 0.1],
+        epochs=epochs, data_fraction=data_fraction)
     batch_results = analyze_batch_sizes(
-        model_func, train_dir, val_dir, [16, 32, 64], epochs=5)
+        model_func, train_dir, val_dir, [16, 32, 64, 128],
+        epochs=epochs, data_fraction=data_fraction)
     reg_results = analyze_regularization_strengths(
         create_cnn_with_regularization, train_dir, val_dir,
-        [0.1, 0.2, 0.3, 0.5], [1e-4, 1e-3, 1e-2], epochs=5)
+        [0.1, 0.2, 0.3], [1e-4, 1e-3, 1e-2],
+        epochs=epochs, data_fraction=data_fraction)
     opt_results = analyze_optimizers(
-        model_func, train_dir, val_dir, ["adam", "sgd", "rmsprop"], epochs=5)
+        model_func, train_dir, val_dir, ["adam", "sgd", "rmsprop"],
+        epochs=epochs, data_fraction=data_fraction)
     print("Hyperparameter analysis complete.")
     return {"learning_rate": lr_results, "batch_size": batch_results,
             "regularization": reg_results, "optimizer": opt_results}

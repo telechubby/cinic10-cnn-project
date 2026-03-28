@@ -59,18 +59,31 @@ def train_model(
     device,
     patience: int = 5,
     checkpoint_path: str = None,
+    scheduler=None,
+    label_smoothing: float = 0.0,
 ) -> dict:
     """
     Train model and return history dict of per-epoch lists.
 
     Returns dict with keys: loss, accuracy, val_loss, val_accuracy.
     Each value is a list with one entry per epoch trained.
+
+    Args:
+        scheduler: optional torch.optim.lr_scheduler instance; step() is called
+                   once per epoch (after validation) if provided.
+        label_smoothing: smoothing factor for CrossEntropyLoss (0.0 = hard labels,
+                         0.1 is a common choice for image classification).
     """
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     history = {"loss": [], "accuracy": [], "val_loss": [], "val_accuracy": []}
     best_val_acc = -1.0
     best_state = None
     patience_counter = 0
+
+    # Mixed precision: float16 on CUDA/MPS, disabled on CPU/XLA.
+    # XLA devices don't have a .type attribute, so we fall back to 'cpu'.
+    _dev_type = device.type if hasattr(device, "type") else "cpu"
+    _use_amp = _dev_type in ("cuda", "mps")
 
     for epoch in range(epochs):
         # --- Training pass ---
@@ -85,8 +98,9 @@ def train_model(
         for images, labels in bar:
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            with torch.autocast(device_type=_dev_type, dtype=torch.float16, enabled=_use_amp):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * images.size(0)
@@ -104,8 +118,9 @@ def train_model(
         with torch.no_grad():
             for images, labels in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{epochs} [val]  ", unit="batch", leave=False):
                 images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, labels)
+                with torch.autocast(device_type=_dev_type, dtype=torch.float16, enabled=_use_amp):
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
                 val_loss += loss.item() * images.size(0)
                 val_correct += (outputs.argmax(dim=1) == labels).sum().item()
                 val_total += images.size(0)
@@ -132,11 +147,18 @@ def train_model(
         else:
             patience_counter += 1
 
+        if scheduler is not None:
+            scheduler.step()
+            current_lr = scheduler.get_last_lr()[0]
+            lr_str = f"  lr {current_lr:.2e}"
+        else:
+            lr_str = ""
+
         tqdm.write(
             f"Epoch {epoch + 1:>3}/{epochs}  "
             f"loss {epoch_train_loss:.4f}  acc {epoch_train_acc:.4f}  "
             f"val_loss {epoch_val_loss:.4f}  val_acc {epoch_val_acc:.4f}"
-            f"{best_marker}"
+            f"{best_marker}{lr_str}"
         )
 
         if patience_counter >= patience:

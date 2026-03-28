@@ -114,9 +114,73 @@ def create_data_generators(train_dir, validation_dir, batch_size=32, augment=Tru
     val_dataset = datasets.ImageFolder(validation_dir, transform=val_transform)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                              shuffle=True, num_workers=0, pin_memory=False)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                            shuffle=False, num_workers=0, pin_memory=False)
+                              shuffle=True, num_workers=4,
+                              persistent_workers=True, pin_memory=False)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size,
+                              shuffle=False, num_workers=4,
+                              persistent_workers=True, pin_memory=False)
+    return train_loader, val_loader
+
+
+# CINIC-10 channel statistics (computed over the full 270k-image dataset)
+CINIC10_MEAN = (0.47889522, 0.47227842, 0.43047404)
+CINIC10_STD  = (0.24205776, 0.23828046, 0.25874022)
+
+
+def create_data_generators_strong(train_dir, validation_dir, batch_size=512, num_workers=4):
+    """
+    DataLoaders with strong augmentation for VGG/ResNet-style training on 32×32 images.
+
+    Train pipeline:
+        RandomCrop(32, padding=4)          — standard ±4px translation for CIFAR-scale images
+        RandomHorizontalFlip()
+        AutoAugment(CIFAR10)               — policy learned on CIFAR-10; safe magnitudes for 32×32
+        ToTensor()
+        Normalize(CINIC-10 mean, std)
+
+    Val/test pipeline: Resize → ToTensor → Normalize only (no stochastic transforms).
+
+    Why AutoAugment(CIFAR10) over TrivialAugmentWide
+    -------------------------------------------------
+    TrivialAugmentWide uses "widest possible" magnitude ranges (Rotate ±135°,
+    TranslateX/Y up to 32 px, ShearX/Y up to 0.99).  On 32×32 pixels those
+    extremes completely destroy image content, collapsing first-epoch accuracy
+    from ~40% to ~23%.  AutoAugment(CIFAR10) uses a policy optimised for small
+    images and applies moderate, content-preserving magnitudes.
+
+    Notes
+    -----
+    * AutoAugmentPolicy.CIFAR10 is available in torchvision >= 0.12 (torch >= 1.11).
+    * Normalize shifts inputs to roughly zero-mean unit-variance, which is
+      important for SGD + weight-decay and stabilises BN statistics.
+    """
+    import torch
+    from torch.utils.data import DataLoader
+    from torchvision import datasets, transforms
+
+    train_transform = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
+        transforms.ToTensor(),
+        transforms.Normalize(CINIC10_MEAN, CINIC10_STD),
+    ])
+
+    val_transform = transforms.Compose([
+        transforms.Resize((32, 32)),
+        transforms.ToTensor(),
+        transforms.Normalize(CINIC10_MEAN, CINIC10_STD),
+    ])
+
+    train_dataset = datasets.ImageFolder(train_dir,      transform=train_transform)
+    val_dataset   = datasets.ImageFolder(validation_dir, transform=val_transform)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                              shuffle=True,  num_workers=num_workers,
+                              persistent_workers=True, pin_memory=False)
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size,
+                              shuffle=False, num_workers=num_workers,
+                              persistent_workers=True, pin_memory=False)
     return train_loader, val_loader
 
 
