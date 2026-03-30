@@ -1,9 +1,12 @@
-# Project I: Image Classification with Convolutional Neural Networks
+# **Project I: Image Classification with Convolutional Neural Networks**
 
-**Dataset:** CINIC-10
-**Course:** Deep Learning, Warsaw University of Technology, 2026
-**Authors:** Ljubomir Kolev
-**Date:** March 2026
+###### **Dataset:** CINIC-10
+
+###### **Course:** Deep Learning, Warsaw University of Technology, 2026
+
+###### **Author:** Ljubomir Kolev
+
+###### **Date:** 30.03.2026
 
 ---
 
@@ -66,8 +69,9 @@ We set out to answer five questions:
 
 A CNN processes an image through a stack of learnable filters. The basic operation is 2D convolution: a kernel $K$ of size $k \times k$ slides over the input feature map $X$ to produce output $Y$:
 
-$$Y(i, j) = \sum_{m=0}^{k-1} \sum_{n=0}^{k-1} K(m, n) \cdot X(i + m, j + n) + b$$
-
+$$
+Y(i, j) = \sum_{m=0}^{k-1} \sum_{n=0}^{k-1} K(m, n) \cdot X(i + m, j + n) + b
+$$
 where $b$ is a learnable bias term. Each filter learns to detect a specific local pattern (edges, textures, shapes), and stacking multiple convolutional layers lets the network build up hierarchically from low-level features to high-level semantic concepts [1].
 
 In practice, modern CNNs interleave convolutional layers with nonlinearities (typically ReLU: $\text{ReLU}(x) = \max(0, x)$), spatial downsampling via max-pooling, and normalisation layers.
@@ -76,9 +80,13 @@ In practice, modern CNNs interleave convolutional layers with nonlinearities (ty
 
 Batch normalisation (BN) [6] normalises the activations within each mini-batch to stabilise training. For a mini-batch $\mathcal{B} = \{x_1, \ldots, x_m\}$, BN computes:
 
-$$\hat{x}_i = \frac{x_i - \mu_{\mathcal{B}}}{\sqrt{\sigma_{\mathcal{B}}^2 + \epsilon}}$$
+$$
+\hat{x}_i = \frac{x_i - \mu_{\mathcal{B}}}{\sqrt{\sigma_{\mathcal{B}}^2 + \epsilon}}
+$$
 
-$$y_i = \gamma \hat{x}_i + \beta$$
+$$
+y_i = \gamma \hat{x}_i + \beta
+$$
 
 where $\mu_{\mathcal{B}}$ and $\sigma_{\mathcal{B}}^2$ are the mini-batch mean and variance, $\epsilon$ is a small constant for numerical stability, and $\gamma$, $\beta$ are learnable affine parameters. BN reduces sensitivity to weight initialisation and learning rate, enabling faster and more stable training. All four of our architectures use BN after every convolutional layer.
 
@@ -86,108 +94,125 @@ where $\mu_{\mathcal{B}}$ and $\sigma_{\mathcal{B}}^2$ are the mini-batch mean a
 
 He et al. [3] introduced residual connections (skip connections) to address the degradation problem in deep networks: as depth increases beyond a certain point, training accuracy starts to decrease - not because of overfitting, but because the optimiser struggles to learn identity mappings through many nonlinear layers. A residual block reformulates the learning objective as:
 
-$$\mathbf{y} = \mathcal{F}(\mathbf{x}, \{W_i\}) + \mathbf{x}$$
-
+$$
+\mathbf{y} = \mathcal{F}(\mathbf{x}, \{W_i\}) + \mathbf{x}
+$$
 where $\mathcal{F}(\mathbf{x}, \{W_i\})$ is the residual function (typically two 3x3 conv layers with BN and ReLU) and $\mathbf{x}$ is the identity shortcut. The network only needs to learn the deviation from identity, which is easier to optimise. When the input and output dimensions differ (e.g., due to stride-2 downsampling), a 1x1 convolution projects the shortcut to matching dimensions:
 
-$$\mathbf{y} = \mathcal{F}(\mathbf{x}, \{W_i\}) + W_s \mathbf{x}$$
-
+$$
+\mathbf{y} = \mathcal{F}(\mathbf{x}, \{W_i\}) + W_s \mathbf{x}
+$$
 Our ResNet Deep model uses this design with 9 residual blocks across 3 stages (64, 128, 256 channels), totalling 18 convolutional layers plus a stem convolution.
 
 ### 2.4 Loss function and label smoothing
 
 The standard training objective for multi-class classification is the categorical cross-entropy loss:
 
-$$\mathcal{L}_{CE} = -\sum_{c=1}^{C} y_c \log(\hat{y}_c)$$
-
+$$
+\mathcal{L}_{CE} = -\sum_{c=1}^{C} y_c \log(\hat{y}_c)
+$$
 where $y_c$ is 1 for the correct class and 0 otherwise, and $\hat{y}_c$ is the predicted probability for class $c$ (output of softmax). Minimising this loss pushes the network to assign high probability to the correct class.
 
 Label smoothing [7] replaces hard one-hot targets with softened versions:
 
-$$y_c^{LS} = \begin{cases} 1 - \alpha + \alpha / C & \text{if } c = \text{true class} \\ \alpha / C & \text{otherwise} \end{cases}$$
-
+$$
+y_c^{LS} = \begin{cases} 1 - \alpha + \alpha / C & \text{if } c = \text{true class} \\ \alpha / C & \text{otherwise} \end{cases}
+$$
 where $\alpha$ is the smoothing parameter (we use $\alpha = 0.1$). This prevents the model from becoming overconfident on training examples and has been shown to improve generalisation, especially on noisy or ambiguous datasets [7].
 
 ### 2.5 Optimisation
 
-**Stochastic Gradient Descent (SGD) with Momentum.** The classic optimiser updates parameters $\theta$ using:
+SGD with momentum updates parameters $\theta$ using:
 
-$$v_t = \mu \cdot v_{t-1} + \nabla_\theta \mathcal{L}(\theta_t)$$
-$$\theta_{t+1} = \theta_t - \eta \cdot v_t$$
+$$
+v_t = \mu \cdot v_{t-1} + \nabla_\theta \mathcal{L}(\theta_t)
+$$
+
+$$
+\theta_{t+1} = \theta_t - \eta \cdot v_t
+$$
 
 where $\eta$ is the learning rate and $\mu$ is the momentum coefficient (we use $\mu = 0.9$). Momentum accumulates past gradients, helping the optimiser move through narrow valleys in the loss landscape and dampening oscillations.
 
-**Adam** [8] adapts per-parameter learning rates using running estimates of first and second gradient moments. It generally converges faster than SGD in the early stages of training but may generalise worse on some tasks [9].
+Adam [8] adapts per-parameter learning rates using running estimates of first and second gradient moments. It generally converges faster than SGD in the early stages of training but may generalise worse on some tasks [9].
 
-**Cosine Annealing Learning Rate Schedule.** Instead of keeping the learning rate constant or manually decaying it, we use cosine annealing [10]:
+Instead of keeping the learning rate constant or manually decaying it, we use cosine annealing [10]:
 
-$$\eta_t = \eta_{min} + \frac{1}{2}(\eta_{max} - \eta_{min})\left(1 + \cos\left(\frac{t \pi}{T}\right)\right)$$
-
+$$
+\eta_t = \eta_{min} + \frac{1}{2}(\eta_{max} - \eta_{min})\left(1 + \cos\left(\frac{t \pi}{T}\right)\right)
+$$
 where $T$ is the total number of epochs, $\eta_{max}$ is the initial learning rate, and $\eta_{min}$ is the minimum (typically 0). The learning rate starts high and smoothly decays following a cosine curve, which avoids the need for manual step schedules and helps the model converge to flatter minima.
 
 ### 2.6 Regularisation
 
-**Dropout** [11] randomly sets a fraction $p$ of activations to zero during training:
+Dropout [11] randomly sets a fraction $p$ of activations to zero during training:
 
-$$\tilde{h}_i = \begin{cases} 0 & \text{with probability } p \\ h_i / (1 - p) & \text{with probability } 1 - p \end{cases}$$
-
+$$
+\tilde{h}_i = \begin{cases} 0 & \text{with probability } p \\ h_i / (1 - p) & \text{with probability } 1 - p \end{cases}
+$$
 The $(1-p)$ scaling ensures that expected activation magnitudes remain the same between training and inference. Dropout prevents co-adaptation of neurons and acts as an implicit ensemble over exponentially many sub-networks.
 
-**Weight Decay (L2 Regularisation)** adds a penalty on the squared magnitude of the weights to the loss function:
+Weight decay (L2 regularisation) adds a penalty on the squared magnitude of the weights to the loss function:
 
-$$\mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda \sum_i \|w_i\|^2$$
-
+$$
+\mathcal{L}_{total} = \mathcal{L}_{CE} + \lambda \sum_i \|w_i\|^2
+$$
 where $\lambda$ is the weight decay coefficient. This discourages large weights, which tend to produce overfitting. With SGD, weight decay is equivalent to L2 regularisation; with Adam, they differ slightly [12], but the PyTorch `weight_decay` parameter implements the decoupled version.
 
 ### 2.7 Data augmentation
 
 Data augmentation artificially expands the training set by applying random transformations to images. Common augmentation techniques include:
 
-- **Random horizontal flip:** mirrors the image left-right with 50% probability
-- **Random rotation:** rotates by a random angle within a specified range
-- **Random affine transformations:** applies combinations of translation, scaling, and shearing
-- **Color jitter:** randomly adjusts brightness, contrast, saturation, and hue
+- Random horizontal flip: mirrors the image left-right with 50% probability
+- Random rotation: rotates by a random angle within a specified range
+- Random affine transformations: applies combinations of translation, scaling, and shearing
+- Color jitter: randomly adjusts brightness, contrast, saturation, and hue
 
 More advanced augmentation techniques have been proposed to improve generalisation:
 
-**Cutout** [13] randomly masks out a square region of the input image during training. For an image of size $H \times W$, a patch of size $s \times s$ centered at a random position is zeroed out. This forces the network to attend to multiple parts of the image rather than relying on a single discriminative region.
+Cutout [13] randomly masks out a square region of the input image during training. For an image of size $H \times W$, a patch of size $s \times s$ centered at a random position is zeroed out. This forces the network to attend to multiple parts of the image rather than relying on a single discriminative region.
 
-**AutoAugment** [14] uses reinforcement learning to search for the best augmentation policy for a given dataset. The CIFAR-10 policy (which we use for CINIC-10 given the similar image size and class structure) consists of 25 sub-policies, each applying two transforms chosen from a pool of 14 operations with learned probability and magnitude. We specifically chose `AutoAugmentPolicy.CIFAR10` over `TrivialAugmentWide` because the latter applies extreme magnitudes (e.g., rotation up to 135 degrees, translation up to 32 pixels) that completely destroy content at 32x32 resolution.
+AutoAugment [14] uses reinforcement learning to search for the best augmentation policy for a given dataset. The CIFAR-10 policy (which we use for CINIC-10 given the similar image size and class structure) consists of 25 sub-policies, each applying two transforms chosen from a pool of 14 operations with learned probability and magnitude. We specifically chose `AutoAugmentPolicy.CIFAR10` over `TrivialAugmentWide` because the latter applies extreme magnitudes (e.g., rotation up to 135 degrees, translation up to 32 pixels) that completely destroy content at 32x32 resolution.
 
-**Mixup** [15] creates virtual training examples by taking convex combinations of pairs of images and their labels:
+Mixup [15] creates virtual training examples by taking convex combinations of pairs of images and their labels:
 
-$$\tilde{x} = \lambda x_i + (1 - \lambda) x_j, \qquad \tilde{y} = \lambda y_i + (1 - \lambda) y_j$$
-
+$$
+\tilde{x} = \lambda x_i + (1 - \lambda) x_j, \qquad \tilde{y} = \lambda y_i + (1 - \lambda) y_j
+$$
 where $\lambda \sim \text{Beta}(\alpha, \alpha)$. This encourages the model to behave linearly between training examples, which acts as a form of regularisation.
 
 ### 2.8 Few-shot learning and Prototypical Networks
 
 Few-shot learning addresses the problem of classifying images when only a handful of labelled examples are available per class. Standard supervised training breaks down in this regime because randomly initialised neural networks need thousands of examples to learn useful features.
 
-**Prototypical Networks** [16] tackle this through episodic meta-training. The key idea is to learn an embedding function $f_\phi$ that maps images into a metric space where samples from the same class cluster together. Classification is then performed by computing distances to class prototypes.
+Prototypical Networks [16] tackle this through episodic meta-training. The key idea is to learn an embedding function $f_\phi$ that maps images into a metric space where samples from the same class cluster together. Classification is then performed by computing distances to class prototypes.
 
 Given a support set $S_k = \{(x_1, y_1), \ldots, (x_K, y_K)\}$ for class $k$, the prototype is the mean of the embedded support points:
 
-$$\mathbf{c}_k = \frac{1}{|S_k|} \sum_{(x_i, y_i) \in S_k} f_\phi(x_i)$$
-
+$$
+\mathbf{c}_k = \frac{1}{|S_k|} \sum_{(x_i, y_i) \in S_k} f_\phi(x_i)
+$$
 A query image $x$ is classified by finding the nearest prototype in Euclidean distance:
 
-$$p(y = k \mid x) = \frac{\exp(-\|f_\phi(x) - \mathbf{c}_k\|^2)}{\sum_{k'} \exp(-\|f_\phi(x) - \mathbf{c}_{k'}\|^2)}$$
-
+$$
+p(y = k \mid x) = \frac{\exp(-\|f_\phi(x) - \mathbf{c}_k\|^2)}{\sum_{k'} \exp(-\|f_\phi(x) - \mathbf{c}_{k'}\|^2)}
+$$
 The network is trained by minimising cross-entropy over these distance-based probabilities across many randomly sampled episodes (N-way K-shot tasks). At test time, prototypes are simply computed from new support images - no fine-tuning needed. This is why ProtoNets can work with very few examples while a standard CNN trained from scratch cannot.
 
 ### 2.9 Ensemble methods
 
 Ensemble methods combine predictions from multiple independently trained models to reduce variance and improve robustness. Two common strategies are:
 
-**Hard Voting:** each model casts a vote for its predicted class, and the ensemble prediction is the majority:
+Hard voting: each model casts a vote for its predicted class, and the ensemble prediction is the majority:
 
-$$\hat{y} = \text{mode}(\hat{y}_1, \hat{y}_2, \ldots, \hat{y}_M)$$
+$$
+\hat{y} = \text{mode}(\hat{y}_1, \hat{y}_2, \ldots, \hat{y}_M)
+$$
+Soft voting: the ensemble averages the softmax probability vectors from all members and then takes the argmax:
 
-**Soft Voting:** the ensemble averages the softmax probability vectors from all members and then takes the argmax:
-
-$$\hat{y} = \arg\max_c \frac{1}{M} \sum_{m=1}^{M} p_m(c \mid x)$$
-
+$$
+\hat{y} = \arg\max_c \frac{1}{M} \sum_{m=1}^{M} p_m(c \mid x)
+$$
 Soft voting generally outperforms hard voting because it preserves confidence information - a model that assigns 90% probability to the correct class contributes more than one at 40%, even though both would vote the same way under hard voting [17].
 
 ---
@@ -196,7 +221,7 @@ Soft voting generally outperforms hard voting because it preserves confidence in
 
 ### 3.1 Hardware and software
 
-All experiments were run on an **Apple M1 Max MacBook Pro** (24-core GPU, 32 GB unified memory) using the **MPS** (Metal Performance Shaders) backend for PyTorch. The software stack consists of Python 3.12, PyTorch 2.x with torchvision, scikit-learn, pandas, matplotlib, seaborn, and tqdm.
+All experiments were run on an **Apple M1 Max MacBook Pro** (24-core GPU, 32 GB unified memory) using the **MPS** (Metal Performance Shaders) backend for PyTorch. The software stack consists of Python 3.13, PyTorch 2 with torchvision, scikit-learn, pandas, matplotlib, seaborn, and tqdm.
 
 ### 3.2 Training pipeline
 
@@ -231,11 +256,11 @@ for images, labels in train_loader:
 
 ### 3.3 Hardware-specific optimisations for Apple Silicon
 
-Running on MPS rather than CUDA required several platform-specific adjustments. Full details are documented in `docs/performance-optimisations.md`; the key changes are summarised here.
+Running on MPS rather than CUDA required several platform-specific adjustments.
 
-**Data loading.** We use `num_workers=4` with `persistent_workers=True`. On macOS, Python multiprocessing uses `spawn` (not `fork`), so without persistent workers each epoch would re-spawn all worker processes - adding several seconds of overhead. `pin_memory` is kept at `False` because MPS uses unified memory (CPU and GPU share the same physical RAM), so page-locked memory offers no benefit.
+Data loading: we use `num_workers=4` with `persistent_workers=True`. On macOS, Python multiprocessing uses `spawn` (not `fork`), so without persistent workers each epoch would re-spawn all worker processes, adding several seconds of overhead. `pin_memory` is kept at `False` because MPS uses unified memory (CPU and GPU share the same physical RAM), so page-locked memory offers no benefit.
 
-**Batch size tuning.** CINIC-10 images are 32x32, so after three pooling stages the spatial dimensions shrink to 4x4. At this scale, each MPS kernel call does very little work relative to the fixed per-call launch overhead. Increasing batch size from 128 to 512 reduced kernel launches per epoch from ~704 to ~176, roughly doubling throughput. However, larger models need smaller batches: ResNet Deep at batch_size=512 triggered MPS memory pressure and slowed to ~2 batch/s, so we used per-model batch size configuration:
+Batch size: CINIC-10 images are 32x32, so after three pooling stages the spatial dimensions shrink to 4x4. At this scale, each MPS kernel call does very little work relative to the fixed per-call launch overhead. Increasing batch size from 128 to 512 reduced kernel launches per epoch from ~704 to ~176, roughly doubling throughput. However, larger models need smaller batches: ResNet Deep at batch_size=512 triggered MPS memory pressure and slowed to ~2 batch/s. The root cause is that ResNet Deep's first stage has no spatial downsampling (the feature maps stay at 32×32 throughout), so each of its 3 residual blocks must store 512 × 64 × 32 × 32 activation tensors for the skip connection — roughly 4× more activation memory than a VGG-style model at the same batch size. We therefore used per-model batch size configuration:
 
 | Model | Parameters | Batch Size | LR (SGD) | Workers |
 |-------|-----------|-----------|----------|---------|
@@ -246,9 +271,9 @@ Running on MPS rather than CUDA required several platform-specific adjustments. 
 
 Learning rates are scaled using the **linear scaling rule** [18]: when batch size doubles, LR also doubles (reference: lr=0.01 at batch_size=128). For the smallest models, we used half the full linear scale as a safety margin since we did not implement a warmup schedule.
 
-**Mixed precision.** `torch.autocast` with `dtype=torch.float16` provides a 10-20% speedup per epoch on MPS. BatchNorm layers automatically stay in float32 inside the autocast context (handled internally by PyTorch), so numerical stability is preserved.
+Mixed precision: `torch.autocast` with `dtype=torch.float16` provides a 10-20% speedup per epoch on MPS. BatchNorm layers automatically stay in float32 inside the autocast context (handled internally by PyTorch), so numerical stability is preserved.
 
-**Hyperparameter sweep subsetting.** To reduce sweep wall-clock time by approximately 13x, we ran HP sweeps on 25% of the training data for 3 epochs. This preserves relative rankings between configurations while being much faster than full-data sweeps. The sweep results in Section 4.2 use this reduced setup; the 5-epoch results in the CSVs come from an earlier run with slightly different defaults.
+HP sweep subsetting: to reduce sweep wall-clock time by approximately 13x, we ran HP sweeps on 25% of the training data for 3 epochs. This preserves relative rankings between configurations while being much faster than full-data sweeps. The sweep results in Section 4.2 use this reduced setup; the 5-epoch results in the CSVs come from an earlier run with slightly different defaults.
 
 ### 3.4 Model architectures
 
@@ -460,7 +485,7 @@ The model cannot generalise from this few examples. Even at K=50 (500 total imag
 
 Prototypical Networks work differently. Rather than learning a full classifier from K examples, they learn an embedding function through episodic training - each training step simulates a few-shot task. At test time, class prototypes are just the mean embedding of K support images, and queries are classified by which prototype is closest.
 
-Our ProtoNet uses a 4-block CNN encoder producing 64-dimensional L2-normalised embeddings. It was trained for 20 epochs on 10-way episodes sampled from the training set and evaluated on 600 episodes from the validation set.
+Our ProtoNet uses a 4-block CNN encoder producing 64-dimensional L2-normalised embeddings. We initially ran it for 40 epochs but validation accuracy stopped improving after epoch 20, so 20 epochs became our standard. It was trained on 10-way episodes sampled from the training set and evaluated on 600 episodes from the validation set.
 
 | K-shot | Mean Acc. | Std. | 95% CI |
 |---|---|---|---|
@@ -541,17 +566,17 @@ ResNet Deep improves on VGG Baseline across all 10 classes. The biggest gains ar
 
 Looking back, the most interesting thing about this project is how each experiment changed what we did in the next one. The final training pipeline (SGD + cosine annealing + AutoAugment + moderate dropout + weight decay) was not designed up front - it fell out of the results section by section.
 
-**Architecture (Section 4.1) decided the ceiling.** ResNet Deep at 79.8% was 13+ pp ahead of anything else. Skip connections were the difference - without them, stacking more layers made things worse, not better (VGG Baseline at 61.8%). This was our clearest result and told us that if we were going to invest compute in a single long training run, it had to be ResNet Deep.
+Architecture (Section 4.1) decided the ceiling. ResNet Deep at 79.8% was 13+ pp ahead of anything else. Skip connections were the difference - without them, stacking more layers made things worse, not better (VGG Baseline at 61.8%). This was our clearest result and told us that if we were going to invest compute in a single long training run, it had to be ResNet Deep.
 
-**HP sweeps (Section 4.2) set the safe ranges.** We ran these on VGG Baseline with Adam because it is cheaper and the relative rankings generalise to similar-capacity models. The key takeaways: lr=0.1 breaks training entirely, dropout $\geq$ 0.5 collapses to random chance, and Adam converges faster than SGD at 5 epochs. But we also noted (Section 4.2.3) that SGD tends to generalise better over longer schedules [9], so we chose SGD + cosine annealing for all runs over 5 epochs.
+HP sweeps (Section 4.2) set the safe ranges. We ran these on VGG Baseline with Adam because it is cheaper and the relative rankings generalise to similar-capacity models. The key takeaways: lr=0.1 breaks training entirely, dropout $\geq$ 0.5 collapses to random chance, and Adam converges faster than SGD at 5 epochs. But we also noted (Section 4.2.3) that SGD tends to generalise better over longer schedules [9], so we chose SGD + cosine annealing for all runs over 5 epochs.
 
-**Augmentation (Section 4.3) turned out to be epoch-dependent.** At 5 epochs, most augmentation pipelines actually hurt - the model does not have time to learn from harder examples. Only a horizontal flip helped. But the architecture comparison (15 epochs, same augmentation) already showed that AutoAugment works at longer schedules. So we kept AutoAugment in the final pipeline, knowing it would pay off at 20-30 epochs even though it looked bad at 5.
+Augmentation (Section 4.3) turned out to be epoch-dependent. At 5 epochs, most augmentation pipelines actually hurt - the model does not have time to learn from harder examples. Only a horizontal flip helped. But the architecture comparison (15 epochs, same augmentation) already showed that AutoAugment works at longer schedules. So we kept AutoAugment in the final pipeline, knowing it would pay off at 20-30 epochs even though it looked bad at 5.
 
-**Statistical significance (Section 4.4) warned us about short-schedule HP tuning.** The regularisation config that "won" at 5 epochs (dropout=0.1, wd=$10^{-4}$) actually lost to the default at 15 epochs. Lower dropout helps convergence speed but allows more overfitting with longer training. So instead of copying the 5-epoch winner, we kept each architecture's built-in dropout for the long runs and only carried over weight_decay=$5 \times 10^{-4}$, which helped at both time horizons.
+Statistical significance (Section 4.4) warned us about short-schedule HP tuning. The regularisation config that "won" at 5 epochs (dropout=0.1, wd=$10^{-4}$) actually lost to the default at 15 epochs. Lower dropout helps convergence speed but allows more overfitting with longer training. So instead of copying the 5-epoch winner, we kept each architecture's built-in dropout for the long runs and only carried over weight_decay=$5 \times 10^{-4}$, which helped at both time horizons.
 
-**Few-shot learning (Section 4.5) showed the limits of training from scratch.** The naive baseline stayed at 10% (random chance) even with 50 examples per class. Prototypical Networks reached 26-30% on 10-way tasks by learning a reusable embedding function from the full training set. The reduced dataset experiment bridged the two regimes: accuracy scales roughly logarithmically with data, and even 10% of the data (900 images/class) gets to 41.8%.
+Few-shot learning (Section 4.5) showed the limits of training from scratch. The naive baseline stayed at 10% (random chance) even with 50 examples per class. Prototypical Networks reached 26-30% on 10-way tasks by learning a reusable embedding function from the full training set. The reduced dataset experiment bridged the two regimes: accuracy scales roughly logarithmically with data, and even 10% of the data (900 images/class) gets to 41.8%.
 
-**Ensemble (Section 4.6) gave a free accuracy bump.** We used EfficientCNN rather than ResNet Deep because 3x ResNet Deep runs would take 12x longer than a single EfficientCNN, and the point was to demonstrate that ensembling works. Soft voting beat hard voting, and both beat any individual model.
+Ensemble (Section 4.6) gave a free accuracy bump. We used EfficientCNN rather than ResNet Deep because 3x ResNet Deep runs would take 12x longer than a single EfficientCNN, and the point was to demonstrate that ensembling works. Soft voting beat hard voting, and both beat any individual model.
 
 If we had to summarise it in one line: architecture depth mattered most, regularisation settings mattered second, and augmentation only mattered if you trained long enough for it.
 
@@ -574,7 +599,7 @@ If we had to summarise it in one line: architecture depth mattered most, regular
 cd "Deep Learning/Project 1"
 
 # Install dependencies
-pip install torch torchvision scikit-learn pandas matplotlib seaborn tqdm Pillow
+pip install -r requirements.txt
 
 # Download CINIC-10 from https://www.kaggle.com/datasets/mengcius/cinic10
 # Extract into data/ so the structure is:
@@ -601,10 +626,9 @@ Project 1/
   data/                  # CINIC-10 dataset (not in repo)
   docs/                  # Documentation
     report.md            # This report
-    performance-optimisations.md  # Hardware-specific tuning details
   models/                # Saved model checkpoints (.pt files)
   notebooks/
-    project1_v2.ipynb    # Main experiment notebook
+    project1.ipynb    # Main experiment notebook
   results/               # All CSV results and figure PNGs
   src/                   # Python modules
     model_architecture.py    # CNN model definitions
